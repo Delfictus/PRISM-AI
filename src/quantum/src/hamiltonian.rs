@@ -196,10 +196,9 @@ impl PhaseResonanceField {
         }
 
         let max_colors = 4; // Maximum 4 colors for protein secondary structure
-        let threshold = 0.3; // Coupling strength threshold for edge creation
 
-        // Use sophisticated chromatic coloring algorithm
-        match ChromaticColoring::new(&self.coupling_amplitudes, max_colors, threshold) {
+        // Use adaptive threshold selection for optimal graph construction
+        match ChromaticColoring::new_adaptive(&self.coupling_amplitudes, max_colors) {
             Ok(mut coloring) => {
                 // Optimize the coloring
                 let _ = coloring.optimize(100, 5.0);

@@ -277,6 +277,7 @@ mod tests {
             input_scaling: 1.0,
             noise_level: 0.01,
             enable_plasticity: false,
+            stdp_profile: crate::stdp_profiles::STDPProfile::Balanced,
         };
 
         let mut accelerated = AcceleratedReservoirComputer::new(config, 4).unwrap();

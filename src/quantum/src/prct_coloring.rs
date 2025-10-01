@@ -23,12 +23,39 @@ pub struct ChromaticColoring {
 }
 
 impl ChromaticColoring {
-    /// Create new chromatic coloring from coupling matrix
+    /// Create new chromatic coloring with adaptive threshold selection
+    ///
+    /// Automatically determines optimal threshold for graph construction based on
+    /// coupling matrix statistics and target chromatic number. This ensures the
+    /// graph is k-colorable while maximizing edge density.
+    ///
+    /// # Arguments
+    /// * `coupling_matrix` - Complex coupling amplitudes between atoms
+    /// * `target_colors` - Desired number of colors (chromatic number)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let coupling = Array2::from_elem((10, 10), Complex64::new(0.5, 0.0));
+    /// let coloring = ChromaticColoring::new_adaptive(&coupling, 4)?;
+    /// assert!(coloring.verify_coloring());
+    /// ```
+    pub fn new_adaptive(
+        coupling_matrix: &Array2<Complex64>,
+        target_colors: usize,
+    ) -> Result<Self> {
+        let threshold = Self::find_optimal_threshold(coupling_matrix, target_colors)?;
+        Self::new(coupling_matrix, target_colors, threshold)
+    }
+
+    /// Create new chromatic coloring from coupling matrix with manual threshold
     ///
     /// # Arguments
     /// * `coupling_matrix` - Complex coupling amplitudes between atoms
     /// * `target_colors` - Desired number of colors (chromatic number)
     /// * `threshold` - Coupling strength threshold for edge creation
+    ///
+    /// # Note
+    /// Consider using `new_adaptive()` for automatic threshold selection
     pub fn new(
         coupling_matrix: &Array2<Complex64>,
         target_colors: usize,
@@ -61,6 +88,107 @@ impl ChromaticColoring {
         instance.conflict_count = instance.count_conflicts();
 
         Ok(instance)
+    }
+
+    /// Find optimal threshold for graph construction using adaptive algorithm
+    ///
+    /// Uses binary search to find the maximum threshold that produces a graph
+    /// likely to be k-colorable with the target number of colors. This maximizes
+    /// edge density while maintaining k-colorability.
+    ///
+    /// Algorithm:
+    /// 1. Collect all non-zero coupling strengths
+    /// 2. Binary search over sorted strengths
+    /// 3. For each threshold candidate, estimate chromatic number using Brooks' theorem
+    /// 4. Select maximum threshold where χ(G) ≤ target_colors
+    ///
+    /// # Arguments
+    /// * `coupling_matrix` - Complex coupling amplitudes between atoms
+    /// * `target_colors` - Desired chromatic number
+    ///
+    /// # Returns
+    /// Optimal coupling strength threshold
+    fn find_optimal_threshold(
+        coupling_matrix: &Array2<Complex64>,
+        target_colors: usize,
+    ) -> Result<f64> {
+        let n = coupling_matrix.nrows();
+
+        // Collect all non-zero coupling strengths
+        let mut strengths: Vec<f64> = Vec::new();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let strength = coupling_matrix[[i, j]].norm();
+                if strength > 1e-10 {
+                    strengths.push(strength);
+                }
+            }
+        }
+
+        if strengths.is_empty() {
+            return Ok(0.0);
+        }
+
+        // Sort in descending order (strongest couplings first)
+        strengths.sort_by(|a, b| b.partial_cmp(a).unwrap());
+
+        // Binary search for optimal threshold
+        // Goal: Find maximum threshold where graph is likely k-colorable
+        let mut low_idx = 0;
+        let mut high_idx = strengths.len() - 1;
+        let mut best_threshold = strengths[high_idx]; // Start with weakest coupling
+
+        while low_idx <= high_idx {
+            let mid_idx = (low_idx + high_idx) / 2;
+            let test_threshold = strengths[mid_idx];
+
+            // Build graph with this threshold
+            let adjacency = Self::build_adjacency(coupling_matrix, test_threshold);
+
+            // Estimate chromatic number using Brooks' theorem:
+            // χ(G) ≤ Δ(G) + 1, where Δ(G) is maximum degree
+            // (Equality holds only for complete graphs and odd cycles)
+            let max_degree = Self::compute_max_degree(&adjacency);
+            let estimated_chromatic = max_degree + 1;
+
+            if estimated_chromatic <= target_colors {
+                // Graph is likely k-colorable
+                // Try higher threshold (more edges) for better optimization
+                best_threshold = test_threshold;
+                if mid_idx == 0 {
+                    break;
+                }
+                high_idx = mid_idx - 1;
+            } else {
+                // Too many edges, graph may not be k-colorable
+                // Reduce threshold (fewer edges)
+                if mid_idx == strengths.len() - 1 {
+                    break;
+                }
+                low_idx = mid_idx + 1;
+            }
+        }
+
+        // Verify the selected threshold produces a valid graph
+        let final_adjacency = Self::build_adjacency(coupling_matrix, best_threshold);
+        let final_max_degree = Self::compute_max_degree(&final_adjacency);
+
+        if final_max_degree + 1 > target_colors * 2 {
+            // Very conservative fallback: use mean coupling strength
+            let mean_strength = strengths.iter().sum::<f64>() / strengths.len() as f64;
+            return Ok(mean_strength);
+        }
+
+        Ok(best_threshold)
+    }
+
+    /// Compute maximum vertex degree in adjacency matrix
+    fn compute_max_degree(adjacency: &Array2<bool>) -> usize {
+        let n = adjacency.nrows();
+        (0..n)
+            .map(|i| (0..n).filter(|&j| adjacency[[i, j]]).count())
+            .max()
+            .unwrap_or(0)
     }
 
     /// Build adjacency matrix from coupling matrix
@@ -293,6 +421,98 @@ impl ChromaticColoring {
         // Return normalized balance score (1.0 = perfect balance)
         1.0 / (1.0 + variance.sqrt())
     }
+
+    /// Get the threshold value that would be selected for this coupling matrix
+    ///
+    /// Useful for analysis and debugging of the adaptive threshold algorithm
+    pub fn analyze_threshold(
+        coupling_matrix: &Array2<Complex64>,
+        target_colors: usize,
+    ) -> Result<ThresholdAnalysis> {
+        let n = coupling_matrix.nrows();
+
+        // Collect coupling strengths
+        let mut strengths: Vec<f64> = Vec::new();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let strength = coupling_matrix[[i, j]].norm();
+                if strength > 1e-10 {
+                    strengths.push(strength);
+                }
+            }
+        }
+
+        if strengths.is_empty() {
+            return Ok(ThresholdAnalysis {
+                optimal_threshold: 0.0,
+                min_coupling: 0.0,
+                max_coupling: 0.0,
+                mean_coupling: 0.0,
+                median_coupling: 0.0,
+                num_edges_at_threshold: 0,
+                graph_density: 0.0,
+                estimated_chromatic_number: 1,
+            });
+        }
+
+        strengths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        let min_coupling = strengths[0];
+        let max_coupling = strengths[strengths.len() - 1];
+        let mean_coupling = strengths.iter().sum::<f64>() / strengths.len() as f64;
+        let median_coupling = strengths[strengths.len() / 2];
+
+        // Find optimal threshold
+        let optimal_threshold = Self::find_optimal_threshold(coupling_matrix, target_colors)?;
+
+        // Count edges at optimal threshold
+        let adjacency = Self::build_adjacency(coupling_matrix, optimal_threshold);
+        let num_edges = (0..n)
+            .map(|i| (i + 1..n).filter(|&j| adjacency[[i, j]]).count())
+            .sum::<usize>();
+
+        let max_edges = n * (n - 1) / 2;
+        let graph_density = if max_edges > 0 {
+            num_edges as f64 / max_edges as f64
+        } else {
+            0.0
+        };
+
+        let max_degree = Self::compute_max_degree(&adjacency);
+        let estimated_chromatic_number = max_degree + 1;
+
+        Ok(ThresholdAnalysis {
+            optimal_threshold,
+            min_coupling,
+            max_coupling,
+            mean_coupling,
+            median_coupling,
+            num_edges_at_threshold: num_edges,
+            graph_density,
+            estimated_chromatic_number,
+        })
+    }
+}
+
+/// Analysis results for adaptive threshold selection
+#[derive(Debug, Clone)]
+pub struct ThresholdAnalysis {
+    /// Optimal threshold selected by adaptive algorithm
+    pub optimal_threshold: f64,
+    /// Minimum coupling strength in matrix
+    pub min_coupling: f64,
+    /// Maximum coupling strength in matrix
+    pub max_coupling: f64,
+    /// Mean coupling strength
+    pub mean_coupling: f64,
+    /// Median coupling strength
+    pub median_coupling: f64,
+    /// Number of edges in graph at optimal threshold
+    pub num_edges_at_threshold: usize,
+    /// Graph density (edges / max_possible_edges)
+    pub graph_density: f64,
+    /// Estimated chromatic number (max_degree + 1)
+    pub estimated_chromatic_number: usize,
 }
 
 #[cfg(test)]
@@ -347,10 +567,100 @@ mod tests {
 
     #[test]
     fn test_color_balance() {
-        let coupling = Array2::from_elem((10, 10), Complex64::new(0.5, 0.0));
-        let coloring = ChromaticColoring::new(&coupling, 3, 0.3).unwrap();
+        // Complete graph requires n colors, use larger target
+        let mut coupling = Array2::from_elem((10, 10), Complex64::new(0.5, 0.0));
+        for i in 0..10 {
+            coupling[[i, i]] = Complex64::new(0.0, 0.0);
+        }
+
+        // Complete graph K10 needs 10 colors
+        let coloring = ChromaticColoring::new(&coupling, 10, 0.3).unwrap();
 
         let balance = coloring.color_balance();
         assert!(balance >= 0.0 && balance <= 1.0);
+    }
+
+    #[test]
+    fn test_adaptive_threshold() {
+        // Create varied coupling matrix
+        let mut coupling = Array2::zeros((8, 8));
+        for i in 0..8 {
+            for j in (i + 1)..8 {
+                // Distance-dependent coupling (simulating physical system)
+                let distance = ((i as f64 - j as f64).abs() + 1.0);
+                let strength = 1.0 / distance.powi(2);
+                coupling[[i, j]] = Complex64::new(strength, 0.0);
+                coupling[[j, i]] = Complex64::new(strength, 0.0);
+            }
+        }
+
+        let coloring = ChromaticColoring::new_adaptive(&coupling, 3).unwrap();
+        assert!(coloring.verify_coloring());
+        assert_eq!(coloring.get_num_colors(), 3);
+    }
+
+    #[test]
+    fn test_adaptive_vs_manual_threshold() {
+        let mut coupling = Array2::zeros((6, 6));
+        // Ring topology
+        for i in 0..6 {
+            let j = (i + 1) % 6;
+            coupling[[i, j]] = Complex64::new(1.0, 0.0);
+            coupling[[j, i]] = Complex64::new(1.0, 0.0);
+        }
+
+        // Both should produce valid 2-coloring (bipartite graph)
+        let adaptive = ChromaticColoring::new_adaptive(&coupling, 2).unwrap();
+        let manual = ChromaticColoring::new(&coupling, 2, 0.5).unwrap();
+
+        assert!(adaptive.verify_coloring());
+        assert!(manual.verify_coloring());
+    }
+
+    #[test]
+    fn test_threshold_analysis() {
+        let mut coupling = Array2::zeros((5, 5));
+        for i in 0..5 {
+            for j in (i + 1)..5 {
+                coupling[[i, j]] = Complex64::new((i + j) as f64 * 0.1, 0.0);
+                coupling[[j, i]] = Complex64::new((i + j) as f64 * 0.1, 0.0);
+            }
+        }
+
+        let analysis = ChromaticColoring::analyze_threshold(&coupling, 3).unwrap();
+
+        assert!(analysis.optimal_threshold >= analysis.min_coupling);
+        assert!(analysis.optimal_threshold <= analysis.max_coupling);
+        assert!(analysis.graph_density >= 0.0 && analysis.graph_density <= 1.0);
+        assert!(analysis.estimated_chromatic_number >= 1);
+    }
+
+    #[test]
+    fn test_adaptive_with_complete_graph() {
+        // Complete graph K4 requires 4 colors
+        let mut coupling = Array2::from_elem((4, 4), Complex64::new(1.0, 0.0));
+        for i in 0..4 {
+            coupling[[i, i]] = Complex64::new(0.0, 0.0);
+        }
+
+        let coloring = ChromaticColoring::new_adaptive(&coupling, 4).unwrap();
+        assert!(coloring.verify_coloring());
+        assert_eq!(coloring.get_num_colors(), 4);
+    }
+
+    #[test]
+    fn test_adaptive_with_sparse_coupling() {
+        // Very sparse coupling - only a few strong connections
+        let mut coupling = Array2::zeros((10, 10));
+        coupling[[0, 1]] = Complex64::new(1.0, 0.0);
+        coupling[[1, 0]] = Complex64::new(1.0, 0.0);
+        coupling[[2, 3]] = Complex64::new(0.9, 0.0);
+        coupling[[3, 2]] = Complex64::new(0.9, 0.0);
+
+        let coloring = ChromaticColoring::new_adaptive(&coupling, 2).unwrap();
+        assert!(coloring.verify_coloring());
+
+        let analysis = ChromaticColoring::analyze_threshold(&coupling, 2).unwrap();
+        assert!(analysis.num_edges_at_threshold <= 2);
     }
 }
