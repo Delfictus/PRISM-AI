@@ -186,29 +186,51 @@ impl PhaseResonanceField {
         }
     }
 
-    /// Generate chromatic graph coloring χ(rᵢ,cⱼ)
+    /// Generate chromatic graph coloring χ(rᵢ,cⱼ) using optimized algorithm
     fn generate_chromatic_coloring(&mut self, n_atoms: usize) {
-        // Simple greedy coloring algorithm
-        self.chromatic_coloring = vec![0; n_atoms];
-        let max_colors = 4; // Maximum 4 colors for protein secondary structure
+        use crate::prct_coloring::ChromaticColoring;
 
-        for i in 0..n_atoms {
-            // Assign color based on position modulo max_colors
-            // In real implementation, this would use graph coloring algorithms
-            self.chromatic_coloring[i] = i % max_colors;
+        if n_atoms == 0 {
+            self.chromatic_coloring = Vec::new();
+            return;
+        }
+
+        let max_colors = 4; // Maximum 4 colors for protein secondary structure
+        let threshold = 0.3; // Coupling strength threshold for edge creation
+
+        // Use sophisticated chromatic coloring algorithm
+        match ChromaticColoring::new(&self.coupling_amplitudes, max_colors, threshold) {
+            Ok(mut coloring) => {
+                // Optimize the coloring
+                let _ = coloring.optimize(100, 5.0);
+                self.chromatic_coloring = coloring.get_coloring().to_vec();
+            }
+            Err(_) => {
+                // Fallback to simple modulo coloring
+                self.chromatic_coloring = (0..n_atoms).map(|i| i % max_colors).collect();
+            }
         }
     }
 
     /// Optimize TSP ordering τ(eᵢⱼ,π) for minimal phase interference
     fn optimize_tsp_ordering(&mut self, n_atoms: usize) {
-        // Simple nearest-neighbor heuristic (placeholder for real TSP solution)
-        self.tsp_permutation = (0..n_atoms).collect();
+        use crate::prct_tsp::TSPPathOptimizer;
 
-        // In real implementation, would use:
-        // - Lin-Kernighan heuristic
-        // - Christofides algorithm
-        // - Branch and bound
-        // For now, use identity permutation
+        if n_atoms == 0 {
+            self.tsp_permutation = Vec::new();
+            return;
+        }
+
+        // Use Lin-Kernighan-inspired TSP optimization
+        let mut tsp = TSPPathOptimizer::new(&self.coupling_amplitudes);
+
+        // First apply 2-opt improvements
+        let _ = tsp.optimize(100);
+
+        // Then apply simulated annealing for global optimization
+        let _ = tsp.optimize_annealing(500, 10.0);
+
+        self.tsp_permutation = tsp.get_tour().to_vec();
     }
 
     /// Calculate phase coherence Ψ(G,π,t) at time t
@@ -347,6 +369,150 @@ impl PhaseResonanceField {
         // Update phase coherence
         self.phase_coherence = self.phase_coherence(t);
     }
+
+    /// Build complete optimized PRCT field (main constructor)
+    pub fn build_optimized(
+        coupling_amplitudes: Array2<Complex64>,
+        num_colors: usize,
+        tsp_iterations: usize,
+    ) -> anyhow::Result<Self> {
+        use crate::prct_coloring::ChromaticColoring;
+        use crate::prct_tsp::TSPPathOptimizer;
+
+        let n = coupling_amplitudes.nrows();
+
+        if n == 0 {
+            return Err(anyhow::anyhow!("Empty coupling matrix"));
+        }
+
+        // 1. Chromatic Coloring
+        let threshold = 0.3; // Higher threshold for sparser graph
+        let mut coloring = ChromaticColoring::new(&coupling_amplitudes, num_colors, threshold)?;
+        coloring.optimize(100, 5.0)?;
+
+        if !coloring.verify_coloring() {
+            return Err(anyhow::anyhow!("Invalid chromatic coloring produced"));
+        }
+
+        // 2. TSP Path Optimization
+        let mut tsp = TSPPathOptimizer::new(&coupling_amplitudes);
+        tsp.optimize(tsp_iterations / 2)?;
+        tsp.optimize_annealing(tsp_iterations / 2, 10.0)?;
+
+        if !tsp.validate_tour() {
+            return Err(anyhow::anyhow!("Invalid TSP tour produced"));
+        }
+
+        // 3. Initialize frequencies and phase offsets
+        let mut field = Self {
+            coupling_amplitudes: coupling_amplitudes.clone(),
+            frequencies: Array2::zeros((n, n)),
+            phase_offsets: Array2::zeros((n, n)),
+            chromatic_coloring: coloring.get_coloring().to_vec(),
+            tsp_permutation: tsp.get_tour().to_vec(),
+            phase_coherence: 0.0,
+            energy_scale: 1.0,
+        };
+
+        field.initialize_resonance_parameters(n);
+
+        // 4. Calculate initial phase coherence
+        field.phase_coherence = field.phase_coherence(0.0);
+
+        Ok(field)
+    }
+
+    /// Get PRCT diagnostics for monitoring
+    pub fn get_prct_diagnostics(&self) -> PRCTDiagnostics {
+        let n = self.coupling_amplitudes.nrows();
+
+        let num_colors = if self.chromatic_coloring.is_empty() {
+            0
+        } else {
+            *self.chromatic_coloring.iter().max().unwrap_or(&0) + 1
+        };
+
+        let mean_coupling_strength = if n > 0 {
+            self.coupling_amplitudes
+                .iter()
+                .map(|c| c.norm())
+                .sum::<f64>()
+                / (n * n) as f64
+        } else {
+            0.0
+        };
+
+        // Calculate tour quality
+        let tsp_quality = if !self.tsp_permutation.is_empty() {
+            use crate::prct_tsp::TSPPathOptimizer;
+            let tsp = TSPPathOptimizer::new(&self.coupling_amplitudes);
+            tsp.get_path_quality()
+        } else {
+            0.0
+        };
+
+        // Calculate coloring quality
+        let coloring_balance = if num_colors > 0 {
+            use std::collections::HashMap;
+            let mut distribution: HashMap<usize, usize> = HashMap::new();
+            for &color in &self.chromatic_coloring {
+                *distribution.entry(color).or_insert(0) += 1;
+            }
+
+            let ideal_per_color = n as f64 / num_colors as f64;
+            let variance: f64 = distribution
+                .values()
+                .map(|&count| {
+                    let diff = count as f64 - ideal_per_color;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / num_colors as f64;
+
+            1.0 / (1.0 + variance.sqrt())
+        } else {
+            0.0
+        };
+
+        PRCTDiagnostics {
+            num_vertices: n,
+            num_colors,
+            tsp_path_length: self.tsp_permutation.len(),
+            phase_coherence: self.phase_coherence,
+            mean_coupling_strength,
+            tsp_quality,
+            coloring_balance,
+            energy_scale: self.energy_scale,
+        }
+    }
+
+    /// Get chromatic coloring
+    pub fn get_coloring(&self) -> &[usize] {
+        &self.chromatic_coloring
+    }
+
+    /// Get TSP permutation
+    pub fn get_tsp_permutation(&self) -> &[usize] {
+        &self.tsp_permutation
+    }
+
+    /// Get coupling amplitudes
+    pub fn get_coupling_amplitudes(&self) -> &Array2<Complex64> {
+        &self.coupling_amplitudes
+    }
+}
+
+/// PRCT diagnostic information
+#[derive(Debug, Clone)]
+pub struct PRCTDiagnostics {
+    pub num_vertices: usize,
+    pub num_colors: usize,
+    pub tsp_path_length: usize,
+    pub phase_coherence: f64,
+    pub mean_coupling_strength: f64,
+    pub tsp_quality: f64,
+    pub coloring_balance: f64,
+    pub energy_scale: f64,
 }
 
 /// Industrial-grade Hamiltonian operator for quantum mechanical optimization

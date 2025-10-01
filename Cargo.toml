@@ -69,6 +69,10 @@ path = "examples/test_gpu_detection.rs"
 name = "stdp_learning_demo"
 path = "examples/stdp_learning_demo.rs"
 
+[[example]]
+name = "prct_demonstration"
+path = "examples/prct_demonstration.rs"
+
 [lib]
 name = "neuromorphic_quantum_platform"
 path = "src/lib.rs"
