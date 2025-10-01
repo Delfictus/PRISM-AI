@@ -1,0 +1,18 @@
+c Small test graph - 10 vertices, cycle + random edges
+c Chromatic number: 3
+p edge 10 15
+e 1 2
+e 2 3
+e 3 4
+e 4 5
+e 5 6
+e 6 7
+e 7 8
+e 8 9
+e 9 10
+e 10 1
+e 1 5
+e 2 6
+e 3 7
+e 4 8
+e 5 9
