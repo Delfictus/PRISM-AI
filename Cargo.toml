@@ -83,6 +83,10 @@ path = "examples/streaming_demo.rs"
 name = "error_handling_demo"
 path = "examples/error_handling_demo.rs"
 
+[[example]]
+name = "stress_test_demo"
+path = "examples/stress_test_demo.rs"
+
 [lib]
 name = "neuromorphic_quantum_platform"
 path = "src/lib.rs"

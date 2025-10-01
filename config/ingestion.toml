@@ -1,0 +1,67 @@
+# Neuromorphic-Quantum Platform Ingestion Configuration
+# This file configures the real-time data ingestion system
+
+[engine]
+# Size of the async channel buffer (number of data points)
+channel_size = 5000
+
+# Size of the historical circular buffer (number of data points)
+history_size = 50000
+
+# Maximum number of concurrent data sources
+max_sources = 100
+
+[retry]
+# Maximum number of retry attempts for transient failures
+max_attempts = 3
+
+# Initial backoff delay in milliseconds
+initial_backoff_ms = 100
+
+# Maximum backoff delay in milliseconds (exponential backoff is capped at this)
+max_backoff_ms = 5000
+
+# Backoff multiplier for exponential backoff
+backoff_multiplier = 2.0
+
+[circuit_breaker]
+# Number of consecutive errors before opening circuit breaker
+error_threshold = 5
+
+# Time in milliseconds before attempting to close circuit breaker
+timeout_ms = 30000
+
+# Source-specific configurations
+# Each source can override global retry and circuit_breaker settings
+
+[sources.alpaca_market_data]
+enabled = true
+source_type = "alpaca"
+
+[sources.alpaca_market_data.parameters]
+api_key = "${ALPACA_API_KEY}"
+api_secret = "${ALPACA_API_SECRET}"
+symbols = ["AAPL", "GOOGL", "MSFT"]
+
+[sources.optical_sensor_array]
+enabled = true
+source_type = "sensor"
+
+[sources.optical_sensor_array.parameters]
+num_sensors = 900
+sampling_rate_hz = 1000.0
+address = "localhost:8080"
+
+# Override circuit breaker for optical sensors (more sensitive)
+[sources.optical_sensor_array.circuit_breaker]
+error_threshold = 3
+timeout_ms = 10000
+
+[sources.synthetic_test]
+enabled = false
+source_type = "synthetic"
+
+[sources.synthetic_test.parameters]
+dimensions = 10
+frequency = 5.0
+pattern = "sine_wave"

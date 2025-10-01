@@ -21,6 +21,7 @@ async-trait = "0.1"
 log = "0.4"
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 rand = "0.8"
+toml = "0.8"
 
 [lib]
 name = "platform_foundation"

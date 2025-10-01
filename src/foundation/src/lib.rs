@@ -11,7 +11,9 @@ pub mod adapters;
 pub use platform::NeuromorphicQuantumPlatform;
 pub use types::*;
 pub use ingestion::{
-    CircuitBreaker, CircuitBreakerState, DataPoint, DataSource, IngestionEngine, IngestionError,
-    IngestionStats, RetryPolicy, SourceInfo,
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState, ComponentHealth, DataPoint,
+    DataSource, EngineConfig, HealthMetrics, HealthReport, HealthStatus, IngestionConfig,
+    IngestionEngine, IngestionError, IngestionStats, RetryConfig, RetryPolicy, SourceConfig,
+    SourceInfo,
 };
 pub use adapters::{AlpacaMarketDataSource, OpticalSensorArray, SyntheticDataSource};

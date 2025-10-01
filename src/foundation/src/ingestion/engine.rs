@@ -461,6 +461,15 @@ impl IngestionEngine {
         })
     }
 
+    /// Get comprehensive health report
+    pub async fn get_health_report(&self) -> super::health::HealthReport {
+        let stats = self.get_stats().await;
+        let buffer_size = self.buffer_size().await;
+        let buffer_capacity = self.buffer.capacity();
+
+        super::health::HealthReport::from_stats(stats, buffer_size, buffer_capacity)
+    }
+
     /// Get buffer size
     pub async fn buffer_size(&self) -> usize {
         self.buffer.len().await
