@@ -17,10 +17,10 @@
 
 | Benchmark | Vertices | ARES Full | GPU-Only | Known Best | ARES Quality |
 |-----------|----------|-----------|----------|------------|--------------|
-| dsjc125.1 | 125 | 1.63s (χ=6) | 0.43s (χ=6) | χ=5 | GOOD (+1) |
-| dsjc250.5 | 250 | **0.78s (χ=10)** | 3.87s (χ=36) | χ=28 | **EXCELLENT** |
+| dsjc125.1 | 125 | 1.66s (χ=6) | 0.45s (χ=6) | χ=5 | GOOD (+1) |
+| dsjc250.5 | 250 | **0.81s (χ=10)** | 4.25s (χ=38) | χ=28 | **EXCELLENT** |
 
-**Key Finding:** Full platform 5× faster + 3.6× better quality on dense graphs!
+**Key Finding:** Full platform **5.3× faster + 3.8× better quality** on dense graphs!
 
 ---
 
