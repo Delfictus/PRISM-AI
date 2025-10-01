@@ -58,8 +58,8 @@ neuromorphic-quantum-platform/
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
-cd neuromorphic-quantum-platform
+git clone https://github.com/1onlyadvance/Platform-Demo.git
+cd Platform-Demo
 
 # Build the platform
 cargo build --release
@@ -305,6 +305,10 @@ This platform represents the world's first complete integration of neuromorphic 
 
 Licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
+## 👤 Author
+
+**Ididia Serfaty** <IS@delfiuctus.com>
+
 ## 🙏 Acknowledgments
 
 Built on the foundation of decades of research in:
@@ -313,8 +317,10 @@ Built on the foundation of decades of research in:
 - Advanced numerical methods and mathematical physics
 - High-performance computing and software engineering
 
+Built with modern Rust tooling and NVIDIA CUDA for maximum performance.
+
 ---
 
 **🎉 Ready to revolutionize your computational workflows? Get started today!**
 
-*For questions, support, or collaboration opportunities, please open an issue or reach out to the development team.*
+*For questions, support, or collaboration opportunities, please open an issue or contact the author.*
