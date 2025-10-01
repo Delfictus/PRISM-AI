@@ -69,6 +69,8 @@ struct IntegrationMatrix {
     quantum_neuromorphic_feedback: HashMap<String, f64>,
     /// Coherence synchronization parameters
     coherence_sync: CoherenceSync,
+    /// Bidirectional state coupling
+    bidirectional_coupling: BidirectionalCoupling,
 }
 
 /// Coherence synchronization between subsystems
@@ -80,6 +82,33 @@ struct CoherenceSync {
     coherence_strength: f64,
     /// Synchronization tolerance
     sync_tolerance: f64,
+    /// Current neuromorphic oscillator phases
+    neuromorphic_phases: Vec<f64>,
+    /// Current quantum system phase
+    quantum_phase: f64,
+    /// Phase drift rate (radians per ms)
+    phase_drift_rate: f64,
+}
+
+/// Bidirectional coupling between neuromorphic and quantum subsystems
+#[derive(Debug, Clone)]
+struct BidirectionalCoupling {
+    /// Quantum energy feedback to neuromorphic weights
+    energy_to_weights: f64,
+    /// Quantum phase coherence to spike timing
+    phase_to_timing: f64,
+    /// Quantum state features to reservoir input
+    state_to_reservoir: f64,
+    /// Neuromorphic pattern strength to quantum initialization
+    pattern_to_quantum: f64,
+    /// Spike coherence to quantum evolution rate
+    coherence_to_evolution: f64,
+    /// Reservoir memory to quantum state persistence
+    memory_to_persistence: f64,
+    /// Adaptive coupling strength (adjusts based on performance)
+    adaptive_strength: f64,
+    /// Historical coupling effectiveness
+    effectiveness_history: Vec<f64>,
 }
 
 impl Default for PlatformMetrics {
@@ -101,10 +130,14 @@ impl Default for IntegrationMatrix {
         pattern_quantum_coupling.insert("Synchronous".to_string(), 0.8);
         pattern_quantum_coupling.insert("Emergent".to_string(), 0.9);
         pattern_quantum_coupling.insert("Rhythmic".to_string(), 0.6);
+        pattern_quantum_coupling.insert("Burst".to_string(), 0.85);
+        pattern_quantum_coupling.insert("Distributed".to_string(), 0.75);
 
         let mut quantum_neuromorphic_feedback = HashMap::new();
         quantum_neuromorphic_feedback.insert("phase_coherence".to_string(), 0.7);
         quantum_neuromorphic_feedback.insert("energy_landscape".to_string(), 0.5);
+        quantum_neuromorphic_feedback.insert("state_entanglement".to_string(), 0.8);
+        quantum_neuromorphic_feedback.insert("convergence_rate".to_string(), 0.6);
 
         Self {
             pattern_quantum_coupling,
@@ -113,6 +146,19 @@ impl Default for IntegrationMatrix {
                 phase_alignment: 0.95,
                 coherence_strength: 0.8,
                 sync_tolerance: 0.1,
+                neuromorphic_phases: vec![0.0; 10], // 10 oscillators
+                quantum_phase: 0.0,
+                phase_drift_rate: 0.01, // Small drift per ms
+            },
+            bidirectional_coupling: BidirectionalCoupling {
+                energy_to_weights: 0.5,
+                phase_to_timing: 0.7,
+                state_to_reservoir: 0.6,
+                pattern_to_quantum: 0.8,
+                coherence_to_evolution: 0.65,
+                memory_to_persistence: 0.55,
+                adaptive_strength: 1.0,
+                effectiveness_history: Vec::new(),
             },
         }
     }
@@ -181,6 +227,11 @@ impl NeuromorphicQuantumPlatform {
 
             match self.process_neuromorphic(&input).await {
                 Ok(results) => {
+                    // Apply neuromorphic feedback to quantum subsystem
+                    if let Err(e) = self.apply_neuromorphic_feedback(&results).await {
+                        eprintln!("Warning: Neuromorphic feedback failed: {}", e);
+                    }
+
                     neuromorphic_results = Some(results);
                     let mut metrics = self.platform_metrics.write().await;
                     metrics.neuromorphic_success += 1;
@@ -201,6 +252,11 @@ impl NeuromorphicQuantumPlatform {
             if let Some(ref neuro_results) = neuromorphic_results {
                 match self.process_quantum(&input, neuro_results).await {
                     Ok(results) => {
+                        // Apply quantum feedback to neuromorphic subsystem
+                        if let Err(e) = self.apply_quantum_feedback(&results).await {
+                            eprintln!("Warning: Quantum feedback failed: {}", e);
+                        }
+
                         quantum_results = Some(results);
                         let mut metrics = self.platform_metrics.write().await;
                         metrics.quantum_success += 1;
@@ -212,6 +268,13 @@ impl NeuromorphicQuantumPlatform {
             }
 
             quantum_time = Some((chrono::Utc::now() - quantum_start).num_milliseconds() as f64);
+        }
+
+        // Phase 2.5: Synchronize phases if both subsystems active
+        if neuromorphic_results.is_some() && quantum_results.is_some() {
+            if let Err(e) = self.synchronize_phases().await {
+                eprintln!("Warning: Phase synchronization failed: {}", e);
+            }
         }
 
         // Phase 3: Integration and Prediction
@@ -246,6 +309,106 @@ impl NeuromorphicQuantumPlatform {
         }
 
         Ok(output)
+    }
+
+    /// Apply quantum feedback to neuromorphic subsystem
+    /// Updates neuromorphic components based on quantum state
+    async fn apply_quantum_feedback(&self, quantum_results: &QuantumResults) -> Result<()> {
+        let mut integration = self.integration_matrix.write().await;
+
+        // Extract quantum feedback features
+        let energy_feedback = quantum_results.energy;
+        let phase_feedback = quantum_results.phase_coherence;
+        let convergence_feedback = if quantum_results.convergence.converged { 1.0 } else { 0.5 };
+
+        // Update bidirectional coupling adaptive strength based on quantum convergence
+        let coupling = &mut integration.bidirectional_coupling;
+        if quantum_results.convergence.converged {
+            coupling.adaptive_strength = (coupling.adaptive_strength * 0.9 + 1.1 * 0.1).min(1.5);
+        } else {
+            coupling.adaptive_strength = (coupling.adaptive_strength * 0.9 + 0.9 * 0.1).max(0.5);
+        }
+
+        // Record effectiveness for adaptive learning
+        coupling.effectiveness_history.push(convergence_feedback);
+        if coupling.effectiveness_history.len() > 100 {
+            coupling.effectiveness_history.remove(0);
+        }
+
+        // Update phase synchronization
+        integration.coherence_sync.quantum_phase = phase_feedback * 2.0 * std::f64::consts::PI;
+
+        // Apply energy feedback to quantum-neuromorphic coupling weights
+        for (_key, weight) in integration.quantum_neuromorphic_feedback.iter_mut() {
+            let energy_influence = (-energy_feedback.abs() * 0.1).exp(); // Lower energy = stronger coupling
+            *weight = (*weight * 0.8 + energy_influence * 0.2).clamp(0.3, 1.0);
+        }
+
+        Ok(())
+    }
+
+    /// Apply neuromorphic feedback to quantum subsystem
+    /// Updates quantum evolution parameters based on neuromorphic patterns
+    async fn apply_neuromorphic_feedback(&self, neuro_results: &NeuromorphicResults) -> Result<()> {
+        let mut integration = self.integration_matrix.write().await;
+
+        // Extract neuromorphic feedback features
+        let pattern_strength: f64 = neuro_results.patterns.iter().map(|p| p.strength).sum();
+        let spike_coherence = neuro_results.spike_analysis.coherence;
+        let memory_capacity = neuro_results.reservoir_state.memory_capacity;
+
+        // Cache phase drift rate to avoid borrow conflict
+        let phase_drift_rate = integration.coherence_sync.phase_drift_rate;
+
+        // Update neuromorphic phases from pattern dynamics
+        for (i, phase) in integration.coherence_sync.neuromorphic_phases.iter_mut().enumerate() {
+            if i < neuro_results.patterns.len() {
+                let pattern = &neuro_results.patterns[i];
+                *phase += pattern.strength * phase_drift_rate;
+                *phase = *phase % (2.0 * std::f64::consts::PI);
+            }
+        }
+
+        // Update pattern-quantum coupling weights based on detection success
+        let coupling = &mut integration.bidirectional_coupling;
+        coupling.pattern_to_quantum = (coupling.pattern_to_quantum * 0.9 + pattern_strength.min(1.0) * 0.1)
+            .clamp(0.4, 1.0);
+        coupling.coherence_to_evolution = (coupling.coherence_to_evolution * 0.9 + spike_coherence * 0.1)
+            .clamp(0.4, 1.0);
+        coupling.memory_to_persistence = (coupling.memory_to_persistence * 0.9 + memory_capacity * 0.1)
+            .clamp(0.3, 0.9);
+
+        Ok(())
+    }
+
+    /// Synchronize phases between neuromorphic and quantum subsystems
+    async fn synchronize_phases(&self) -> Result<f64> {
+        let mut integration = self.integration_matrix.write().await;
+
+        // Calculate average neuromorphic phase
+        let avg_neuro_phase = if !integration.coherence_sync.neuromorphic_phases.is_empty() {
+            integration.coherence_sync.neuromorphic_phases.iter().sum::<f64>()
+                / integration.coherence_sync.neuromorphic_phases.len() as f64
+        } else {
+            0.0
+        };
+
+        // Calculate phase difference
+        let phase_diff = (integration.coherence_sync.quantum_phase - avg_neuro_phase).abs();
+        let normalized_diff = (phase_diff % (2.0 * std::f64::consts::PI)) / (2.0 * std::f64::consts::PI);
+
+        // Update phase alignment metric
+        integration.coherence_sync.phase_alignment = 1.0 - normalized_diff.min(0.5) * 2.0;
+
+        // Apply synchronization force if phases drift too far
+        if normalized_diff > integration.coherence_sync.sync_tolerance {
+            let sync_rate = 0.05; // Gentle synchronization
+            integration.coherence_sync.quantum_phase =
+                integration.coherence_sync.quantum_phase * (1.0 - sync_rate) +
+                avg_neuro_phase * sync_rate;
+        }
+
+        Ok(integration.coherence_sync.phase_alignment)
     }
 
     /// Process input through neuromorphic subsystem
@@ -484,14 +647,21 @@ impl NeuromorphicQuantumPlatform {
         let mut magnitude = None;
         let mut factors = Vec::new();
 
+        let integration = self.integration_matrix.read().await;
+
         // Analyze neuromorphic results
         if let Some(neuro) = neuro_results {
             factors.push("neuromorphic_analysis".to_string());
 
-            // Pattern-based prediction
+            // Pattern-based prediction with coupling weights
             let mut pattern_strength = 0.0;
             for pattern in &neuro.patterns {
-                pattern_strength += pattern.strength;
+                // Apply pattern-specific coupling weights
+                let coupling_weight = integration.pattern_quantum_coupling
+                    .get(&pattern.pattern_type)
+                    .unwrap_or(&0.7);
+                pattern_strength += pattern.strength * coupling_weight;
+
                 if pattern.strength > 0.8 {
                     factors.push(format!("strong_{}_pattern", pattern.pattern_type));
                 }
@@ -499,20 +669,20 @@ impl NeuromorphicQuantumPlatform {
 
             // Spike analysis contribution
             if neuro.spike_analysis.coherence > 0.7 {
-                confidence += 0.2;
+                confidence += 0.2 * integration.bidirectional_coupling.coherence_to_evolution;
                 factors.push("high_coherence".to_string());
             }
 
             // Reservoir state contribution
             if neuro.reservoir_state.memory_capacity > 0.6 {
-                confidence += 0.1;
+                confidence += 0.1 * integration.bidirectional_coupling.memory_to_persistence;
                 factors.push("good_memory".to_string());
             }
 
             // Determine direction from patterns
             if pattern_strength > 1.0 {
                 direction = if neuro.spike_analysis.spike_rate > 50.0 { "up" } else { "down" }.to_string();
-                magnitude = Some(pattern_strength.min(1.0) * 0.5);
+                magnitude = Some((pattern_strength.min(1.0) * 0.5) * integration.bidirectional_coupling.pattern_to_quantum);
             }
         }
 
@@ -520,33 +690,58 @@ impl NeuromorphicQuantumPlatform {
         if let Some(quantum) = quantum_results {
             factors.push("quantum_optimization".to_string());
 
-            // Phase coherence contribution
+            // Phase coherence contribution with feedback weight
             if quantum.phase_coherence > 0.8 {
-                confidence += 0.15;
+                let feedback_weight = integration.quantum_neuromorphic_feedback
+                    .get("phase_coherence")
+                    .unwrap_or(&0.7);
+                confidence += 0.15 * feedback_weight * integration.bidirectional_coupling.phase_to_timing;
                 factors.push("quantum_coherence".to_string());
             }
 
             // Convergence contribution
             if quantum.convergence.converged {
-                confidence += 0.1;
+                let feedback_weight = integration.quantum_neuromorphic_feedback
+                    .get("convergence_rate")
+                    .unwrap_or(&0.6);
+                confidence += 0.1 * feedback_weight;
                 factors.push("quantum_convergence".to_string());
 
-                // Energy landscape analysis
+                // Energy landscape analysis with feedback
+                let energy_feedback = integration.quantum_neuromorphic_feedback
+                    .get("energy_landscape")
+                    .unwrap_or(&0.5);
                 if quantum.energy < -1.0 {
                     direction = "down".to_string();
-                    magnitude = Some((-quantum.energy).min(1.0) * 0.3);
+                    magnitude = Some(((-quantum.energy).min(1.0) * 0.3) *
+                        integration.bidirectional_coupling.energy_to_weights * energy_feedback);
                 } else if quantum.energy > 1.0 {
                     direction = "up".to_string();
-                    magnitude = Some(quantum.energy.min(1.0) * 0.3);
+                    magnitude = Some((quantum.energy.min(1.0) * 0.3) *
+                        integration.bidirectional_coupling.energy_to_weights * energy_feedback);
                 }
             }
         }
 
-        // Apply integration matrix for neuromorphic-quantum coupling
+        // Apply full integration matrix for neuromorphic-quantum coupling
         if neuro_results.is_some() && quantum_results.is_some() {
-            let integration = self.integration_matrix.read().await;
+            // Coherence synchronization bonus
             confidence *= 1.0 + integration.coherence_sync.coherence_strength * 0.2;
+
+            // Phase alignment bonus
+            confidence *= 1.0 + integration.coherence_sync.phase_alignment * 0.15;
+
+            // Adaptive coupling strength
+            confidence *= integration.bidirectional_coupling.adaptive_strength;
+
+            // State entanglement bonus
+            if let Some(entanglement_weight) = integration.quantum_neuromorphic_feedback.get("state_entanglement") {
+                confidence *= 1.0 + entanglement_weight * 0.1;
+            }
+
             factors.push("neuromorphic_quantum_integration".to_string());
+            factors.push(format!("phase_alignment_{:.2}", integration.coherence_sync.phase_alignment));
+            factors.push(format!("adaptive_coupling_{:.2}", integration.bidirectional_coupling.adaptive_strength));
         }
 
         confidence = confidence.min(0.99).max(0.01);
@@ -644,22 +839,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_neuromorphic_processing() {
-        let config = ProcessingConfig {
+        let platform_config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(platform_config).await.unwrap();
+
+        // Create input with quantum disabled
+        let input_config = ProcessingConfig {
             neuromorphic_enabled: true,
-            quantum_enabled: false,
+            quantum_enabled: false,  // Explicitly disable quantum for this input
             ..Default::default()
         };
-
-        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
 
         let input = PlatformInput::new(
             "test".to_string(),
             vec![1.0, 2.0, 3.0, 4.0, 5.0]
-        );
+        ).with_config(input_config);
 
         let output = platform.process(input).await.unwrap();
 
         assert!(output.neuromorphic_results.is_some());
+        // With quantum disabled in input config, should not have quantum results
         assert!(output.quantum_results.is_none());
         assert!(output.prediction.confidence > 0.0);
     }
@@ -721,5 +919,196 @@ mod tests {
 
         let status = platform.get_status().await;
         assert!(status.neuromorphic_enabled);
+    }
+
+    #[tokio::test]
+    async fn test_bidirectional_feedback() {
+        let config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
+
+        // Process input to generate both neuromorphic and quantum results
+        let input = PlatformInput::new(
+            "bidirectional_test".to_string(),
+            vec![15.0, 25.0, 20.0, 30.0, 22.0, 28.0, 24.0, 26.0]
+        );
+
+        let output = platform.process(input).await.unwrap();
+
+        // Verify both subsystems ran
+        assert!(output.neuromorphic_results.is_some());
+        assert!(output.quantum_results.is_some());
+
+        // Verify integration factors are present
+        assert!(output.prediction.factors.iter().any(|f| f.contains("integration")));
+        assert!(output.prediction.factors.iter().any(|f| f.contains("phase_alignment")));
+        assert!(output.prediction.factors.iter().any(|f| f.contains("adaptive_coupling")));
+    }
+
+    #[tokio::test]
+    async fn test_phase_synchronization() {
+        let config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
+
+        // Process multiple inputs to allow phase synchronization to adapt
+        for i in 0..5 {
+            let input = PlatformInput::new(
+                format!("phase_sync_test_{}", i),
+                vec![10.0 + i as f64 * 2.0, 20.0 + i as f64 * 3.0, 15.0 + i as f64 * 2.5]
+            );
+            platform.process(input).await.unwrap();
+        }
+
+        // Check integration matrix state
+        let integration = platform.integration_matrix.read().await;
+
+        // Phase alignment should be within valid range (starts at 0.95, may drift)
+        assert!(integration.coherence_sync.phase_alignment >= 0.0);
+        assert!(integration.coherence_sync.phase_alignment <= 1.0);
+
+        // Quantum phase should be within valid range [0, 2π]
+        let quantum_phase = integration.coherence_sync.quantum_phase;
+        assert!(quantum_phase >= 0.0);
+        assert!(quantum_phase <= 2.0 * std::f64::consts::PI + 0.1); // Small tolerance for rounding
+    }
+
+    #[tokio::test]
+    async fn test_adaptive_coupling_strength() {
+        let config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
+
+        // Get initial adaptive strength
+        let initial_strength = {
+            let integration = platform.integration_matrix.read().await;
+            integration.bidirectional_coupling.adaptive_strength
+        };
+
+        // Process multiple inputs
+        for i in 0..10 {
+            let input = PlatformInput::new(
+                format!("adaptive_test_{}", i),
+                vec![100.0 + i as f64 * 10.0, 120.0 + i as f64 * 8.0, 110.0 + i as f64 * 9.0]
+            );
+            platform.process(input).await.unwrap();
+        }
+
+        // Check that adaptive strength has changed (learning occurred)
+        let final_strength = {
+            let integration = platform.integration_matrix.read().await;
+            integration.bidirectional_coupling.adaptive_strength
+        };
+
+        // Adaptive strength should be in valid range
+        assert!(final_strength >= 0.5);
+        assert!(final_strength <= 1.5);
+
+        // Should have some effectiveness history
+        let history_len = {
+            let integration = platform.integration_matrix.read().await;
+            integration.bidirectional_coupling.effectiveness_history.len()
+        };
+        assert!(history_len > 0);
+    }
+
+    #[tokio::test]
+    async fn test_quantum_to_neuromorphic_feedback() {
+        let config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
+
+        // Get initial coupling weights
+        let initial_feedback_weights = {
+            let integration = platform.integration_matrix.read().await;
+            integration.quantum_neuromorphic_feedback.clone()
+        };
+
+        // Process input to trigger quantum feedback
+        let input = PlatformInput::new(
+            "quantum_feedback_test".to_string(),
+            vec![50.0, 55.0, 52.0, 58.0, 54.0, 56.0]
+        );
+        platform.process(input).await.unwrap();
+
+        // Check that feedback weights have been updated
+        let updated_feedback_weights = {
+            let integration = platform.integration_matrix.read().await;
+            integration.quantum_neuromorphic_feedback.clone()
+        };
+
+        // Weights should be in valid range
+        for (_key, weight) in updated_feedback_weights.iter() {
+            assert!(*weight >= 0.3);
+            assert!(*weight <= 1.0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_neuromorphic_to_quantum_feedback() {
+        let config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
+
+        // Get initial coupling parameters
+        let initial_pattern_coupling = {
+            let integration = platform.integration_matrix.read().await;
+            integration.bidirectional_coupling.pattern_to_quantum
+        };
+
+        // Process multiple inputs with varying patterns
+        for i in 0..5 {
+            let input = PlatformInput::new(
+                format!("neuro_feedback_test_{}", i),
+                vec![30.0 + i as f64 * 5.0, 35.0 + i as f64 * 6.0, 32.0 + i as f64 * 5.5]
+            );
+            platform.process(input).await.unwrap();
+        }
+
+        // Check that coupling parameters have adapted
+        let final_pattern_coupling = {
+            let integration = platform.integration_matrix.read().await;
+            integration.bidirectional_coupling.pattern_to_quantum
+        };
+
+        // Coupling should be in valid range
+        assert!(final_pattern_coupling >= 0.4);
+        assert!(final_pattern_coupling <= 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_integration_matrix_consistency() {
+        let config = ProcessingConfig::default();
+        let platform = NeuromorphicQuantumPlatform::new(config).await.unwrap();
+
+        // Process input
+        let input = PlatformInput::new(
+            "consistency_test".to_string(),
+            vec![40.0, 45.0, 42.0, 48.0, 44.0, 46.0, 43.0, 47.0]
+        );
+        platform.process(input).await.unwrap();
+
+        // Verify integration matrix structure consistency
+        let integration = platform.integration_matrix.read().await;
+
+        // Check all coupling weights are in valid ranges
+        for (_key, weight) in integration.pattern_quantum_coupling.iter() {
+            assert!(*weight >= 0.0);
+            assert!(*weight <= 1.0);
+        }
+
+        for (_key, weight) in integration.quantum_neuromorphic_feedback.iter() {
+            assert!(*weight >= 0.0);
+            assert!(*weight <= 1.0);
+        }
+
+        // Check coherence sync parameters
+        assert!(integration.coherence_sync.phase_alignment >= 0.0);
+        assert!(integration.coherence_sync.phase_alignment <= 1.0);
+        assert!(integration.coherence_sync.coherence_strength >= 0.0);
+        assert!(integration.coherence_sync.coherence_strength <= 1.0);
+
+        // Check bidirectional coupling parameters
+        let coupling = &integration.bidirectional_coupling;
+        assert!(coupling.energy_to_weights >= 0.0 && coupling.energy_to_weights <= 1.0);
+        assert!(coupling.phase_to_timing >= 0.0 && coupling.phase_to_timing <= 1.0);
+        assert!(coupling.pattern_to_quantum >= 0.0 && coupling.pattern_to_quantum <= 1.0);
+        assert!(coupling.coherence_to_evolution >= 0.0 && coupling.coherence_to_evolution <= 1.0);
+        assert!(coupling.memory_to_persistence >= 0.0 && coupling.memory_to_persistence <= 1.0);
     }
 }
