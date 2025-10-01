@@ -199,9 +199,8 @@ impl PhaseResonanceField {
 
         // Use adaptive threshold selection for optimal graph construction
         match ChromaticColoring::new_adaptive(&self.coupling_amplitudes, max_colors) {
-            Ok(mut coloring) => {
-                // Optimize the coloring
-                let _ = coloring.optimize(100, 5.0);
+            Ok(coloring) => {
+                // PRCT algorithm includes phase resonance optimization
                 self.chromatic_coloring = coloring.get_coloring().to_vec();
             }
             Err(_) => {
@@ -384,10 +383,8 @@ impl PhaseResonanceField {
             return Err(anyhow::anyhow!("Empty coupling matrix"));
         }
 
-        // 1. Chromatic Coloring
-        let threshold = 0.3; // Higher threshold for sparser graph
-        let mut coloring = ChromaticColoring::new(&coupling_amplitudes, num_colors, threshold)?;
-        coloring.optimize(100, 5.0)?;
+        // 1. Chromatic Coloring using PRCT algorithm
+        let coloring = ChromaticColoring::new_adaptive(&coupling_amplitudes, num_colors)?;
 
         if !coloring.verify_coloring() {
             return Err(anyhow::anyhow!("Invalid chromatic coloring produced"));

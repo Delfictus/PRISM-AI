@@ -22,7 +22,8 @@ Comprehensive benchmark suite validating full neuromorphic-quantum platform with
 - 500 cities
 - 1,000 cities
 
-**Total:** 7/7 benchmarks passing ✅
+**Total:** 4/4 graph coloring benchmarks demonstrating full integration ✅
+**TSP:** 3/3 working but not yet integrated with full platform ⚠️
 
 ---
 
@@ -41,13 +42,13 @@ Comprehensive benchmark suite validating full neuromorphic-quantum platform with
 
 ### TSP Performance
 
-| Benchmark | Cities | Full Platform | GPU Only | Improvement |
-|-----------|--------|---------------|----------|-------------|
-| tsp_100 | 100 | 0.10s (90.6%) | 0.07s (16.6%) | **Full 5.4× better quality** |
-| tsp_500 | 500 | 0.12s | 0.09s | Comparable |
-| tsp_1000 | 1000 | 0.14s | 0.15s | **Full 1.06× faster** |
+| Benchmark | Cities | Full Platform | GPU Only | Status |
+|-----------|--------|---------------|----------|--------|
+| tsp_100 | 100 | 0.08s (100 iter) | 0.00s (18 iter) | ⚠️ Both work |
+| tsp_500 | 500 | 0.09s (250 iter) | 0.03s (70 iter) | ⚠️ Both work |
+| tsp_1000 | 1000 | 0.20s (500 iter) | 0.08s (100 iter) | ⚠️ Both work |
 
-**Key Finding:** Full platform achieves **5.4× better solution quality** on 100-city TSP (90.6% vs 16.6% improvement from initial tour).
+**Key Finding:** TSP benchmarks currently compare GPU with different iteration counts, **not full neuromorphic-quantum integration**. Graph coloring demonstrates true platform advantage.
 
 ---
 
@@ -139,10 +140,10 @@ cargo build --release
 
 ### 2. Solution Quality
 
-**Full platform finds better solutions.**
-- TSP 100 cities: 90.6% improvement (vs 16.6% GPU-only)
-- 5.4× better quality
-- Physics coupling provides adaptive search guidance
+**Graph coloring demonstrates capability, not just speed.**
+- Finds valid colorings where GPU-only fails completely
+- This proves neuromorphic-quantum integration provides value
+- TSP quality improvements need proper integration (future work)
 
 ### 3. Performance
 
@@ -210,17 +211,18 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 - [x] Real-time coupling during optimization
 - [x] Diagnostic output confirms integration
 
-### Performance Validation ✅
+### Performance Validation ✅/⚠️
 
-- [x] Full platform succeeds where GPU-only fails (graph coloring)
-- [x] 5.4× better solution quality (TSP)
-- [x] Competitive or better performance
+- [x] Full platform succeeds where GPU-only fails (graph coloring 4/4)
+- [x] Demonstrates capability enhancement, not just speedup
+- [x] Competitive or better performance on dense graphs
 - [x] Reproducible results on standard benchmarks
+- [ ] TSP needs full integration (currently just iteration comparison)
 
-### Test Coverage ✅
+### Test Coverage ✅/⚠️
 
-- [x] 7/7 benchmarks passing
-- [x] Both graph coloring and TSP validated
+- [x] 4/4 graph coloring benchmarks validate full integration
+- [x] 3/3 TSP benchmarks work but need platform integration
 - [x] Small to large problem sizes (100-1000 elements)
 - [x] Sparse and dense constraint graphs
 

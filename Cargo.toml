@@ -12,6 +12,8 @@ members = [
     "src/neuromorphic",
     "src/quantum",
     "src/foundation",
+    "src/shared-types",
+    "src/prct-core",
 ]
 
 [features]

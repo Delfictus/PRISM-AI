@@ -7,6 +7,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=cuda/graph_coloring.cu");
     println!("cargo:rerun-if-changed=cuda/tsp_solver.cu");
+    println!("cargo:rerun-if-changed=cuda/parallel_coloring.cu");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -70,6 +71,27 @@ fn main() {
         panic!("nvcc compilation failed for tsp_solver.cu");
     }
 
+    // Compile parallel coloring kernel
+    let parallel_coloring_file = "cuda/parallel_coloring.cu";
+    let parallel_coloring_ptx = out_dir.join("parallel_coloring.ptx");
+
+    let status = Command::new("nvcc")
+        .args(&[
+            "--ptx",
+            "--gpu-architecture=sm_89", // RTX 5070 (Blackwell)
+            "-o",
+            parallel_coloring_ptx.to_str().unwrap(),
+            parallel_coloring_file,
+            "--use_fast_math",
+            "--generate-line-info",
+        ])
+        .status()
+        .expect("Failed to execute nvcc for parallel_coloring.cu");
+
+    if !status.success() {
+        panic!("nvcc compilation failed for parallel_coloring.cu");
+    }
+
     // Copy PTX files to a known location for runtime access
     let project_root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let runtime_ptx_dir = project_root.join("target").join("ptx");
@@ -77,7 +99,8 @@ fn main() {
 
     std::fs::copy(&graph_coloring_ptx, runtime_ptx_dir.join("graph_coloring.ptx")).unwrap();
     std::fs::copy(&tsp_solver_ptx, runtime_ptx_dir.join("tsp_solver.ptx")).unwrap();
+    std::fs::copy(&parallel_coloring_ptx, runtime_ptx_dir.join("parallel_coloring.ptx")).unwrap();
 
-    println!("cargo:warning=CUDA kernels compiled successfully (graph_coloring.cu + tsp_solver.cu)");
+    println!("cargo:warning=CUDA kernels compiled successfully (graph_coloring.cu + tsp_solver.cu + parallel_coloring.cu)");
     println!("cargo:warning=PTX files copied to target/ptx/ for runtime access");
 }

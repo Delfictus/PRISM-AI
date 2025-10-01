@@ -1930,6 +1930,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "prct-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ndarray",
+ "rayon",
+ "shared-types",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2472,6 +2484,13 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shared-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

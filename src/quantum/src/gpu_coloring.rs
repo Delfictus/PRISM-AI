@@ -62,10 +62,8 @@ impl GpuChromaticColoring {
         // Build adjacency matrix on GPU
         let gpu_adjacency = Self::build_adjacency_gpu(&device, coupling_matrix, threshold)?;
 
-        // Compute initial greedy coloring on CPU (hybrid approach)
-        // For now, download adjacency to CPU for DSATUR
-        let cpu_adjacency = Self::download_adjacency(&device, &gpu_adjacency, n)?;
-        let coloring = Self::greedy_coloring_cpu(&cpu_adjacency, target_colors)?;
+        // Compute coloring using Jones-Plassmann parallel algorithm on GPU
+        let coloring = Self::jones_plassmann_gpu(&device, &gpu_adjacency, n, target_colors)?;
 
         let mut instance = Self {
             device,
@@ -129,20 +127,24 @@ impl GpuChromaticColoring {
         let gpu_adjacency = device.alloc_zeros::<u8>(adjacency_bytes)
             .context("Failed to allocate GPU adjacency matrix")?;
 
-        // Load PTX kernel
-        let out_dir = std::env::var("OUT_DIR")
-            .map_err(|_| anyhow!("OUT_DIR not set - build script may have failed"))?;
-        let ptx_path = std::path::Path::new(&out_dir).join("graph_coloring.ptx");
-
-        if !ptx_path.exists() {
-            return Err(anyhow!(
-                "PTX file not found at {:?}. Build script may have failed. Run: cargo clean && cargo build",
-                ptx_path
-            ));
-        }
-
-        let ptx = std::fs::read_to_string(&ptx_path)
-            .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?;
+        // Load PTX kernel - try OUT_DIR first, then fallback to target/ptx/
+        let ptx = if let Ok(out_dir) = std::env::var("OUT_DIR") {
+            let ptx_path = std::path::Path::new(&out_dir).join("graph_coloring.ptx");
+            if ptx_path.exists() {
+                std::fs::read_to_string(&ptx_path)
+                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?
+            } else {
+                // Fallback to runtime location
+                let runtime_path = std::path::Path::new("target/ptx/graph_coloring.ptx");
+                std::fs::read_to_string(runtime_path)
+                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+            }
+        } else {
+            // Runtime: use known location
+            let runtime_path = std::path::Path::new("target/ptx/graph_coloring.ptx");
+            std::fs::read_to_string(runtime_path)
+                .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+        };
 
         if ptx.is_empty() || !ptx.contains("build_adjacency") {
             return Err(anyhow!(
@@ -242,6 +244,139 @@ impl GpuChromaticColoring {
         }
 
         Ok(adjacency)
+    }
+
+    /// Jones-Plassmann parallel graph coloring algorithm on GPU
+    ///
+    /// Iteratively finds independent sets and colors them in parallel
+    fn jones_plassmann_gpu(
+        device: &Arc<CudaDevice>,
+        gpu_adjacency: &CudaSlice<u8>,
+        n: usize,
+        max_colors: usize,
+    ) -> Result<Vec<usize>> {
+        // Load parallel coloring kernels
+        let ptx = if let Ok(out_dir) = std::env::var("OUT_DIR") {
+            let ptx_path = std::path::Path::new(&out_dir).join("parallel_coloring.ptx");
+            if ptx_path.exists() {
+                std::fs::read_to_string(&ptx_path)
+                    .map_err(|e| anyhow!("Failed to load parallel_coloring PTX from {:?}: {}", ptx_path, e))?
+            } else {
+                let runtime_path = std::path::Path::new("target/ptx/parallel_coloring.ptx");
+                std::fs::read_to_string(runtime_path)
+                    .map_err(|e| anyhow!("Failed to load parallel_coloring PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+            }
+        } else {
+            let runtime_path = std::path::Path::new("target/ptx/parallel_coloring.ptx");
+            std::fs::read_to_string(runtime_path)
+                .map_err(|e| anyhow!("Failed to load parallel_coloring PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+        };
+
+        device.load_ptx(ptx.into(), "parallel_coloring", &[
+            "init_priorities",
+            "find_independent_set",
+            "color_independent_set",
+            "count_uncolored",
+            "verify_coloring"
+        ]).context("Failed to load parallel coloring PTX kernels")?;
+
+        // Allocate GPU buffers
+        let mut gpu_priorities = device.alloc_zeros::<f32>(n)
+            .context("Failed to allocate priorities buffer")?;
+        let mut gpu_colors = device.alloc_zeros::<u32>(n)
+            .context("Failed to allocate colors buffer")?;
+        let mut gpu_can_color = device.alloc_zeros::<u32>(n)
+            .context("Failed to allocate can_color buffer")?;
+        let mut gpu_uncolored_count = device.alloc_zeros::<u32>(1)
+            .context("Failed to allocate uncolored_count buffer")?;
+
+        let cfg = LaunchConfig::for_num_elems(n as u32);
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Initialize priorities and colors
+        unsafe {
+            let init_priorities = device.get_func("parallel_coloring", "init_priorities")
+                .ok_or_else(|| anyhow!("Failed to get init_priorities kernel"))?;
+            init_priorities.launch(
+                cfg,
+                (&gpu_priorities, &gpu_colors, n as u32, seed),
+            ).context("Failed to launch init_priorities kernel")?;
+        }
+        device.synchronize()?;
+
+        // Jones-Plassmann algorithm: iteratively color independent sets
+        let max_iterations = n; // At most n iterations needed
+        for _iteration in 0..max_iterations {
+            // Find independent set (vertices with highest priority among uncolored neighbors)
+            unsafe {
+                let find_independent_set = device.get_func("parallel_coloring", "find_independent_set")
+                    .ok_or_else(|| anyhow!("Failed to get find_independent_set kernel"))?;
+                find_independent_set.launch(
+                    cfg,
+                    (gpu_adjacency, &gpu_priorities, &gpu_colors, &gpu_can_color, n as u32),
+                ).context("Failed to launch find_independent_set kernel")?;
+            }
+            device.synchronize()?;
+
+            // Color the independent set with smallest available colors
+            // Need shared memory for used_colors bit vector: (max_colors + 31) / 32 * 4 bytes
+            let shared_mem_bytes = ((max_colors + 31) / 32 * 4) as u32;
+            let cfg_with_shared = LaunchConfig {
+                grid_dim: cfg.grid_dim,
+                block_dim: cfg.block_dim,
+                shared_mem_bytes,
+            };
+
+            unsafe {
+                let color_independent_set = device.get_func("parallel_coloring", "color_independent_set")
+                    .ok_or_else(|| anyhow!("Failed to get color_independent_set kernel"))?;
+                color_independent_set.launch(
+                    cfg_with_shared,
+                    (gpu_adjacency, &gpu_can_color, &gpu_colors, n as u32, max_colors as u32),
+                ).context("Failed to launch color_independent_set kernel")?;
+            }
+            device.synchronize()?;
+
+            // Count how many vertices are still uncolored
+            device.memset_zeros(&mut gpu_uncolored_count)?;
+            unsafe {
+                let count_uncolored = device.get_func("parallel_coloring", "count_uncolored")
+                    .ok_or_else(|| anyhow!("Failed to get count_uncolored kernel"))?;
+                count_uncolored.launch(
+                    cfg,
+                    (&gpu_colors, &gpu_uncolored_count, n as u32),
+                ).context("Failed to launch count_uncolored kernel")?;
+            }
+            device.synchronize()?;
+
+            // Check if done
+            let uncolored_count: Vec<u32> = device.dtoh_sync_copy(&gpu_uncolored_count)?;
+            if uncolored_count[0] == 0 {
+                break; // All vertices colored
+            }
+        }
+
+        // Download coloring from GPU
+        let gpu_coloring: Vec<u32> = device.dtoh_sync_copy(&gpu_colors)
+            .context("Failed to download coloring from GPU")?;
+
+        // Convert to usize and validate
+        let coloring: Vec<usize> = gpu_coloring.iter()
+            .map(|&c| {
+                if c == 0xFFFFFFFF {
+                    return Err(anyhow!("Some vertices remain uncolored"));
+                }
+                if c >= max_colors as u32 {
+                    return Err(anyhow!("Color {} exceeds max_colors {}", c, max_colors));
+                }
+                Ok(c as usize)
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(coloring)
     }
 
     /// CPU-based greedy DSATUR coloring

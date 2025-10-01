@@ -1,0 +1,25 @@
+//! PRCT Core Domain
+//!
+//! Pure domain logic for Phase Resonance Chromatic-TSP algorithm.
+//! This crate contains ONLY business logic - no infrastructure dependencies.
+//!
+//! Architecture: Hexagonal (Ports & Adapters)
+//! - Domain logic depends on port abstractions (traits)
+//! - Infrastructure adapters implement ports
+//! - Dependency arrows point INWARD to domain
+
+pub mod ports;
+pub mod algorithm;
+pub mod coupling;
+pub mod coloring;
+pub mod tsp;
+pub mod errors;
+
+// Re-export main types
+pub use ports::*;
+pub use algorithm::*;
+pub use coupling::*;
+pub use errors::*;
+
+// Re-export shared types for convenience
+pub use shared_types::*;

@@ -18,7 +18,7 @@ pub use types::*;
 pub use hamiltonian::{Hamiltonian, calculate_ground_state, PhaseResonanceField, PRCTDiagnostics};
 pub use security::{SecurityValidator, SecurityError};
 pub use robust_eigen::{RobustEigenSolver, RobustEigenConfig, EigenDiagnostics, SolverMethod};
-pub use prct_coloring::{ChromaticColoring, ThresholdAnalysis};
+pub use prct_coloring::ChromaticColoring;
 pub use gpu_coloring::GpuChromaticColoring;
 pub use prct_tsp::TSPPathOptimizer;
 pub use gpu_tsp::GpuTspSolver;
