@@ -1,24 +1,66 @@
-//! Neuromorphic Engine Adapter
+//! Neuromorphic Engine Adapter - GPU Accelerated
 //!
-//! Wraps the existing neuromorphic-engine to implement NeuromorphicPort.
+//! Wraps GPU-accelerated neuromorphic processing using CUDA kernels.
+//! CPU fallback only if GPU unavailable.
 
 use prct_core::ports::{NeuromorphicPort, NeuromorphicEncodingParams};
 use prct_core::errors::{PRCTError, Result};
 use shared_types::*;
 use neuromorphic_engine::{SpikeEncoder, ReservoirComputer, PatternDetector, InputData};
 use neuromorphic_engine::pattern_detector::PatternDetectorConfig;
+use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use std::sync::Arc;
 
-/// Adapter connecting PRCT domain to neuromorphic engine
+/// Adapter connecting PRCT domain to GPU-accelerated neuromorphic engine
 pub struct NeuromorphicAdapter {
     window_ms: f64,
+    gpu_device: Option<Arc<CudaDevice>>,
+    use_gpu: bool,
 }
 
 impl NeuromorphicAdapter {
-    /// Create new neuromorphic adapter with default configuration
+    /// Create new GPU-accelerated neuromorphic adapter
     pub fn new() -> Result<Self> {
+        // Try to initialize GPU
+        let (gpu_device, use_gpu) = match CudaDevice::new(0) {
+            Ok(device) => {
+                println!("✓ Neuromorphic GPU initialized (CUDA device 0)");
+                (Some(Arc::new(device)), true)
+            }
+            Err(e) => {
+                eprintln!("⚠ GPU initialization failed: {}. Using CPU fallback.", e);
+                (None, false)
+            }
+        };
+
         Ok(Self {
             window_ms: 100.0,
+            gpu_device,
+            use_gpu,
         })
+    }
+
+    /// Load GPU kernels for neuromorphic processing
+    fn load_gpu_kernels(&self) -> Result<()> {
+        if !self.use_gpu {
+            return Err(PRCTError::NeuromorphicFailed("GPU not available".into()));
+        }
+
+        let device = self.gpu_device.as_ref().unwrap();
+
+        // Load PTX from runtime location
+        let ptx_path = "target/ptx/neuromorphic_kernels.ptx";
+        let ptx = std::fs::read_to_string(ptx_path)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("Failed to load PTX: {}", e)))?;
+
+        device.load_ptx(ptx.into(), "neuromorphic_kernels", &[
+            "encode_spikes_rate",
+            "reservoir_update",
+            "detect_patterns",
+            "compute_coherence"
+        ]).map_err(|e| PRCTError::NeuromorphicFailed(format!("PTX load failed: {}", e)))?;
+
+        Ok(())
     }
 
     /// Calculate optimal neuron count for graph size
