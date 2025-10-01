@@ -1878,6 +1878,7 @@ dependencies = [
  "crossbeam",
  "dashmap",
  "log",
+ "nalgebra",
  "ndarray",
  "neuromorphic-engine",
  "num-complex",

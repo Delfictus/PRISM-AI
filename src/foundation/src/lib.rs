@@ -6,6 +6,8 @@ pub mod platform;
 pub mod types;
 pub mod ingestion;
 pub mod adapters;
+pub mod coupling_physics;
+pub mod adaptive_coupling;
 
 // Re-export main components
 pub use platform::NeuromorphicQuantumPlatform;
@@ -17,3 +19,10 @@ pub use ingestion::{
     SourceInfo,
 };
 pub use adapters::{AlpacaMarketDataSource, OpticalSensorArray, SyntheticDataSource};
+pub use coupling_physics::{
+    PhysicsCoupling, NeuroQuantumCoupling, QuantumNeuroCoupling, KuramotoSync,
+    InformationMetrics, StabilityAnalysis,
+};
+pub use adaptive_coupling::{
+    AdaptiveCoupling, AdaptiveParameter, PerformanceMetrics, CouplingValues, PerformanceSummary,
+};
