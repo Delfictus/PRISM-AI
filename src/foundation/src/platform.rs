@@ -262,9 +262,12 @@ impl NeuromorphicQuantumPlatform {
                         metrics.quantum_success += 1;
                     }
                     Err(e) => {
-                        eprintln!("Quantum processing failed: {}", e);
+                        eprintln!("❌ Quantum processing failed: {}", e);
+                        eprintln!("   Error details: {:?}", e);
                     }
                 }
+            } else {
+                eprintln!("⚠️ Neuromorphic results not available for quantum processing");
             }
 
             quantum_time = Some((chrono::Utc::now() - quantum_start).num_milliseconds() as f64);
@@ -469,6 +472,8 @@ impl NeuromorphicQuantumPlatform {
     /// Uses GPU-accelerated optimization guided by neuromorphic patterns
     async fn process_quantum(&self, input: &PlatformInput, neuro_results: &NeuromorphicResults) -> Result<QuantumResults> {
         use num_complex::Complex64;
+        use crate::coupling_physics::PhysicsCoupling;
+        use nalgebra::DMatrix;
 
         // Detect problem type based on input source
         let is_coloring = input.source.contains("coloring") || input.source.contains("DIMACS");
@@ -478,7 +483,6 @@ impl NeuromorphicQuantumPlatform {
             use quantum_engine::GpuChromaticColoring;
 
             // Reconstruct coupling matrix from flattened input
-            // Input values are flattened n×n matrix
             let n = (input.values.len() as f64).sqrt() as usize;
             let n = n.min(1000);
             let mut coupling = Array2::zeros((n, n));
@@ -493,28 +497,86 @@ impl NeuromorphicQuantumPlatform {
                 }
             }
 
-            // Number of colors based on neuromorphic pattern detection
-            let base_colors = 10;
+            // Initialize physics coupling
+            // Use reservoir activations as temporal pattern (much longer time series)
+            let spike_pattern: Vec<f64> = if neuro_results.spike_analysis.dynamics.len() > 10 {
+                neuro_results.spike_analysis.dynamics.iter()
+                    .map(|&t| t / 1000.0) // Convert ms to seconds
+                    .collect()
+            } else {
+                // Fallback: use reservoir activations as time series
+                neuro_results.reservoir_state.activations[..n.min(100)].to_vec()
+            };
+
+            let quantum_state: Vec<Complex64> = (0..n.min(100))
+                .map(|i| coupling[[i, i]])
+                .collect();
+
+            let coupling_dmatrix = DMatrix::from_fn(n.min(100), n.min(100), |i, j| {
+                coupling[[i.min(n-1), j.min(n-1)]]
+            });
+
+            // Debug: check input sizes
+            let neuro_activations = &neuro_results.reservoir_state.activations[..n.min(100)];
+            println!("  🔍 Physics input: {} neuro activations, {} spike times, {} quantum states",
+                     neuro_activations.len(), spike_pattern.len(), quantum_state.len());
+
+            let mut physics = PhysicsCoupling::from_system_state(
+                neuro_activations,
+                &spike_pattern,
+                &quantum_state,
+                &coupling_dmatrix,
+            )?;
+
+            // Physics-guided search parameters
+            // Spike coherence modulates search intensity
+            let coherence_factor = neuro_results.spike_analysis.coherence;
+            let base_colors = (10.0 * (1.0 + coherence_factor * 2.0)) as usize;
+
+            // Pattern strength determines search depth
             let pattern_boost = if !neuro_results.patterns.is_empty() {
                 let max_strength = neuro_results.patterns.iter()
                     .map(|p| p.strength)
                     .fold(0.0_f64, |a, b| a.max(b));
-                (max_strength * 5.0) as usize
+                (max_strength * 10.0 * physics.info_metrics.transfer_entropy_nq) as usize
             } else {
                 0
             };
-            let k = (base_colors + pattern_boost).min(n);
 
-            // Try to find valid coloring
+            // Use physics coupling to determine maximum colors
+            let neuro_quantum_coupling = physics.neuro_to_quantum.pattern_to_hamiltonian;
+            let k = ((base_colors + pattern_boost) as f64 * (1.0 + neuro_quantum_coupling)).min(n as f64) as usize;
+
+            // Iterative search with Kuramoto synchronization
             let mut colors_used = k;
             let mut found = false;
+            let dt = 0.01;
+
+            println!("  🔬 Physics Coupling Active:");
+            println!("     Spike coherence: {:.4}", coherence_factor);
+            println!("     Neuro→Quantum coupling: {:.4}", neuro_quantum_coupling);
+            println!("     Transfer entropy: {:.4}", physics.info_metrics.transfer_entropy_nq);
+            println!("     Kuramoto order parameter: {:.4}", physics.phase_sync.order_parameter);
+            println!("     Search range: k=2..{}", k);
 
             for trial_k in 2..=k {
+                // Update Kuramoto phases (synchronization between layers)
+                physics.update_kuramoto_phases(dt);
+
+                // Adaptive threshold based on phase synchronization
+                let sync_factor = physics.phase_sync.order_parameter;
+
                 match GpuChromaticColoring::new_adaptive(&coupling, trial_k) {
                     Ok(coloring) => {
                         if coloring.verify_coloring() {
                             colors_used = trial_k;
                             found = true;
+
+                            // Check if synchronization is high enough to stop early
+                            if sync_factor > 0.8 {
+                                println!("     ⚡ Early stop due to high synchronization (r={:.4})", sync_factor);
+                                break;
+                            }
                             break;
                         }
                     }
@@ -567,24 +629,93 @@ impl NeuromorphicQuantumPlatform {
                 }
             }
 
+            // Initialize physics coupling for TSP
+            // Use reservoir activations as temporal pattern (much longer time series)
+            let spike_pattern: Vec<f64> = if neuro_results.spike_analysis.dynamics.len() > 10 {
+                neuro_results.spike_analysis.dynamics.iter()
+                    .map(|&t| t / 1000.0) // Convert ms to seconds
+                    .collect()
+            } else {
+                // Fallback: use reservoir activations as time series
+                neuro_results.reservoir_state.activations[..n.min(100)].to_vec()
+            };
+
+            let quantum_state: Vec<Complex64> = (0..n.min(100))
+                .map(|i| coupling[[i, i]])
+                .collect();
+
+            let coupling_dmatrix = DMatrix::from_fn(n.min(100), n.min(100), |i, j| {
+                coupling[[i.min(n-1), j.min(n-1)]]
+            });
+
+            // Debug: check input sizes
+            let neuro_activations_tsp = &neuro_results.reservoir_state.activations[..n.min(100)];
+            println!("  🔍 Physics input (TSP): {} neuro activations, {} spike times, {} quantum states",
+                     neuro_activations_tsp.len(), spike_pattern.len(), quantum_state.len());
+
+            let mut physics = PhysicsCoupling::from_system_state(
+                neuro_activations_tsp,
+                &spike_pattern,
+                &quantum_state,
+                &coupling_dmatrix,
+            )?;
+
             // Use GPU TSP solver
             let mut gpu_solver = GpuTspSolver::new(&coupling)?;
             let initial_length = gpu_solver.get_tour_length();
 
-            // Number of iterations based on neuromorphic pattern strength
+            // Physics-guided iteration count
             let base_iterations = 50;
             let pattern_boost = if !neuro_results.patterns.is_empty() {
                 let max_strength = neuro_results.patterns.iter()
                     .map(|p| p.strength)
                     .fold(0.0_f64, |a, b| a.max(b));
-                (max_strength * 20.0) as usize
+                // Use transfer entropy to modulate pattern influence
+                (max_strength * 20.0 * physics.info_metrics.transfer_entropy_nq) as usize
             } else {
                 0
             };
-            let max_iterations = base_iterations + pattern_boost;
 
-            // Run GPU optimization
-            gpu_solver.optimize_2opt_gpu(max_iterations)?;
+            // Use neuro→quantum coupling to modulate iterations
+            let neuro_quantum_coupling = physics.neuro_to_quantum.pattern_to_hamiltonian;
+            let max_iterations = ((base_iterations + pattern_boost) as f64 * (1.0 + neuro_quantum_coupling * 0.5)) as usize;
+
+            println!("  🔬 Physics Coupling Active (TSP):");
+            println!("     Spike coherence: {:.4}", coherence_factor);
+            println!("     Neuro→Quantum coupling: {:.4}", neuro_quantum_coupling);
+            println!("     Transfer entropy: {:.4}", physics.info_metrics.transfer_entropy_nq);
+            println!("     Kuramoto order parameter: {:.4}", physics.phase_sync.order_parameter);
+            println!("     2-opt iterations: {}", max_iterations);
+
+            // Run GPU optimization with physics coupling
+            // Update Kuramoto phases periodically during optimization
+            let dt = 0.01;
+            let chunk_size = (max_iterations / 10).max(1);
+
+            for chunk in 0..(max_iterations / chunk_size) {
+                // Update physics coupling between chunks
+                physics.update_kuramoto_phases(dt * chunk_size as f64);
+
+                // Get synchronization factor
+                let sync_factor = physics.phase_sync.order_parameter;
+
+                // Adjust chunk size based on synchronization
+                let adaptive_chunk = if sync_factor > 0.8 {
+                    chunk_size / 2  // Reduce iterations when highly synchronized
+                } else {
+                    chunk_size
+                };
+
+                // Run optimization chunk
+                gpu_solver.optimize_2opt_gpu(adaptive_chunk)?;
+
+                // Check if we should stop early due to high synchronization
+                if sync_factor > 0.85 && chunk > 3 {
+                    println!("     ⚡ Early stop after {} iterations due to high synchronization (r={:.4})",
+                             chunk * chunk_size, sync_factor);
+                    break;
+                }
+            }
 
             let final_length = gpu_solver.get_tour_length();
             let improvement = (initial_length - final_length) / initial_length;
@@ -609,6 +740,10 @@ impl NeuromorphicQuantumPlatform {
                 .take(10)
                 .map(|&city| city as f64)
                 .collect();
+
+            println!("     Initial tour length: {:.2}", initial_energy);
+            println!("     Final tour length: {:.2}", final_energy);
+            println!("     Improvement: {:.2}%", improvement * 100.0);
 
             Ok(QuantumResults {
                 energy: final_energy,

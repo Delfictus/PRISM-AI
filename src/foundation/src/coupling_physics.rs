@@ -136,6 +136,8 @@ impl PhysicsCoupling {
         quantum_state: &[Complex64],
         coupling_matrix: &nalgebra::DMatrix<Complex64>,
     ) -> Result<Self> {
+        println!("     🔬 Initializing physics coupling...");
+
         // 1. Compute information-theoretic metrics
         let info_metrics = Self::compute_information_metrics(
             neuro_state,
@@ -144,7 +146,13 @@ impl PhysicsCoupling {
         )?;
 
         // 2. Compute Kuramoto synchronization parameters
-        let phase_sync = Self::initialize_kuramoto(neuro_state, quantum_state)?;
+        let mut phase_sync = Self::initialize_kuramoto(neuro_state, quantum_state)?;
+
+        // Compute initial order parameter
+        phase_sync.order_parameter = Self::compute_order_parameter(
+            &phase_sync.neuro_phases,
+            phase_sync.quantum_phase,
+        );
 
         // 3. Derive neuromorphic → quantum coupling
         let neuro_to_quantum = Self::compute_neuro_quantum_coupling(
@@ -407,10 +415,17 @@ impl PhysicsCoupling {
     ) -> Result<InformationMetrics> {
         let mutual_information = Self::compute_mutual_information(neuro_state, quantum_state)?;
 
-        let transfer_entropy_nq = Self::compute_transfer_entropy(neuro_state,
-            &Self::complex_to_real(quantum_state), 1)?;
-        let transfer_entropy_qn = Self::compute_transfer_entropy(
-            &Self::complex_to_real(quantum_state), neuro_state, 1)?;
+        let quantum_real = Self::complex_to_real(quantum_state);
+
+        // Debug: check array lengths
+        println!("     🔍 Transfer entropy inputs: neuro={}, spike_pattern={}, quantum={}",
+                  neuro_state.len(), spike_pattern.len(), quantum_real.len());
+
+        let transfer_entropy_nq = Self::compute_transfer_entropy(neuro_state, &quantum_real, 1)?;
+        let transfer_entropy_qn = Self::compute_transfer_entropy(&quantum_real, neuro_state, 1)?;
+
+        println!("     🔍 Transfer entropy: N→Q={:.4}, Q→N={:.4}",
+                  transfer_entropy_nq, transfer_entropy_qn);
 
         let fisher_information = Self::compute_fisher_information(neuro_state);
         let quantum_coherence = Self::quantum_coherence(quantum_state);
