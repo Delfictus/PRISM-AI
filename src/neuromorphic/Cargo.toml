@@ -1,0 +1,24 @@
+[package]
+name = "neuromorphic-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nalgebra = { version = "0.33", features = ["std"] }
+ndarray = "0.16"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+dashmap = "6.0"
+
+# CPU optimization + GPU acceleration
+rayon = "1.10"
+# GPU acceleration with CUDA 12.0 support for RTX 5070 (Ada Lovelace, compute 8.9)
+cudarc = { version = "0.17", features = ["f16", "cublas", "curand", "cuda-12000"] }
+candle-core = { version = "0.8" }
+candle-nn = "0.8"
+
+[lib]
+name = "neuromorphic_engine"
+path = "src/lib.rs"

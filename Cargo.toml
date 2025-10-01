@@ -1,0 +1,57 @@
+[package]
+name = "neuromorphic-quantum-platform"
+version = "0.1.0"
+edition = "2021"
+authors = ["ARES-51 Research"]
+description = "World's first software-based neuromorphic-quantum computing platform"
+license = "MIT"
+
+[workspace]
+members = [
+    "src/neuromorphic",
+    "src/quantum",
+    "src/foundation",
+]
+
+[dependencies]
+neuromorphic-engine = { path = "src/neuromorphic" }
+quantum-engine = { path = "src/quantum" }
+platform-foundation = { path = "src/foundation" }
+
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+rayon = "1.10"
+
+[[example]]
+name = "platform_demo"
+path = "examples/platform_demo.rs"
+
+[[example]]
+name = "simple_usage"
+path = "examples/simple_usage.rs"
+
+[[example]]
+name = "financial_validation"
+path = "examples/financial_validation.rs"
+
+[[example]]
+name = "working_demo"
+path = "examples/working_demo.rs"
+
+[[example]]
+name = "gpu_performance_demo"
+path = "examples/gpu_performance_demo.rs"
+
+[[example]]
+name = "performance_optimization_demo"
+path = "examples/performance_optimization_demo.rs"
+
+[[example]]
+name = "rtx5070_validation_demo"
+path = "examples/rtx5070_validation_demo.rs"
+
+[lib]
+name = "neuromorphic_quantum_platform"
+path = "src/lib.rs"
