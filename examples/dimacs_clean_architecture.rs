@@ -49,8 +49,6 @@ fn main() -> anyhow::Result<()> {
             damping: 0.1,
             temperature: 300.0,
         },
-        cpu_only_mode: false,
-        cpu_mode_threshold: 5, // Use CPU fallback for graphs with >5 vertices
         ..Default::default()
     };
 

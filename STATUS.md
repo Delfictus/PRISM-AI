@@ -79,42 +79,26 @@ Results:
 
 ---
 
-## ✅ CPU Fallback Mode Implemented
+## ⚠️ Current Limitations
 
-### Automatic Quantum Bypass for Large Graphs
-**Status:** ✅ WORKING
+### Quantum Evolution Stability
+**Status:** Works for ≤3 vertices, NaN for ≥10 vertices
 
-**Implementation:**
-- Added `cpu_only_mode` and `cpu_mode_threshold` to PRCTConfig
-- Algorithm automatically detects graph size and bypasses quantum evolution
-- Uses neuromorphic state to create simplified phase field
-- Maintains hexagonal architecture integrity
-
-**Configuration:**
-```rust
-PRCTConfig {
-    cpu_only_mode: false,              // Manual override
-    cpu_mode_threshold: 5,             // Auto-trigger for graphs >5 vertices
-    ...
-}
-```
-
-**Performance:**
-- 10 vertices: 2.02ms, valid coloring ✅
-- 125 vertices (dsjc125.1): 1200ms, valid coloring ✅
-- No quantum NaN errors
-- Architecture still fully operational
-
-### Previous Quantum Evolution Limitation (Now Bypassed)
-**Issue:** Numerical instability in Hamiltonian evolution for >3 vertices
-- 3 vertices (9D Hamiltonian): ✅ Works with full quantum
-- 10+ vertices: ❌ NaN in derivative (now bypassed with CPU mode)
+**Issue:** Numerical instability in Hamiltonian evolution for larger systems
+- 3 vertices (9D Hamiltonian): ✅ Works
+- 10 vertices (30D Hamiltonian): ❌ NaN in derivative
+- 125 vertices (375D Hamiltonian): ❌ Timeout/NaN
 
 **Root Cause:**
 - Full matrix evolution O(n²) for n×3 dimensional state
 - Hamiltonian matrix has numerical precision issues with larger systems
+- Time step constraints (max 0.01) still too large for stability
 
-**Solution:** CPU fallback mode successfully works around this limitation
+**Workarounds for Benchmarks:**
+1. Use CPU-only coloring path (bypass quantum layer)
+2. Implement sparse Hamiltonian representation
+3. Use iterative eigensolvers instead of full matrix
+4. Add Krylov subspace methods for evolution
 
 ---
 
@@ -127,9 +111,9 @@ PRCTConfig {
 | test_reservoir_timing | 2 | ✅ PASS | 4ms | Reservoir processing works |
 | test_hamiltonian_tiny | 3 | ✅ PASS | instant | Hamiltonian construction |
 | test_adapters_simple | 3 | ✅ PASS | <100ms | All adapters integrated |
-| test_prct_solve_tiny | 3 | ✅ PASS | 11.55ms | **Full quantum pipeline!** |
-| test_small_10.col | 10 | ✅ PASS | 2.02ms | **CPU fallback mode!** |
-| dsjc125.1.col | 125 | ✅ PASS | 1200ms | **Valid coloring!** |
+| test_prct_solve_tiny | 3 | ✅ PASS | 11.55ms | **Full PRCT pipeline!** |
+| dimacs (10 vertices) | 10 | ❌ FAIL | timeout | Quantum NaN |
+| dimacs (125 vertices) | 125 | ❌ FAIL | timeout | Quantum timeout |
 
 ---
 
@@ -158,29 +142,25 @@ let solution = prct.solve(&graph)?;  // ✅ WORKS!
 
 ---
 
-## ✅ CPU Fallback Complete
-
-**Implemented:** Option A - CPU fallback for large graphs
-- ✅ Automatic detection via `cpu_mode_threshold`
-- ✅ Manual override via `cpu_only_mode` flag
-- ✅ Maintains architecture integrity
-- ✅ Valid colorings produced
-- ✅ Benchmarks now passing
-
 ## 📝 Next Steps
 
-### Phase 2 (Advanced Features)
-1. **Quantum Optimization** (Optional)
-   - Implement sparse Hamiltonian for large graphs
+### Immediate (Quantum Stability)
+1. **Option A:** Bypass quantum layer for large benchmarks
+   - Use CPU coloring directly
+   - Add `--no-quantum` flag
+   - Still demonstrates architecture
+
+2. **Option B:** Fix quantum evolution
+   - Implement sparse Hamiltonian
    - Add Krylov subspace methods
-   - Would enable full quantum pipeline for 100+ vertices
+   - Use iterative eigensolvers
 
-2. **Benchmark Suite Expansion**
-   - Test all DIMACS COLOR benchmarks
-   - Compare with DSATUR/Greedy baselines
-   - Document performance metrics
+3. **Option C:** Reduce Hamiltonian dimension
+   - Project to lower-dimensional subspace
+   - Use symmetry reduction
+   - Quantum-inspired classical algorithm
 
-### Phase 3 (C-Logic Integration)
+### Phase 2 (C-Logic Integration)
 - Port DRPP/ADP from ARES-51
 - Integrate CSF-Bus messaging
 - Add ChronoPath temporal processing
@@ -216,23 +196,17 @@ let solution = prct.solve(&graph)?;  // ✅ WORKS!
 
 ---
 
-## 🎯 Production Ready
+## 🎯 Recommendation
 
-**Small Graphs (≤3 vertices):**
-- Full quantum pipeline operational
-- 11.55ms for K3 triangle
-- Perfect Kuramoto synchronization (r=0.9994)
-- All three layers coordinating
+**For immediate DARPA demo:**
+Use test_prct_solve_tiny.rs with K3 triangle to demonstrate:
+1. Clean architecture working
+2. All three layers coordinating
+3. Physics coupling active
+4. Valid solutions produced
+5. Hexagonal pattern validated
 
-**Large Graphs (>5 vertices):**
-- CPU fallback mode automatic
-- Valid colorings produced
-- 2ms for 10 vertices
-- 1.2s for 125 vertices
+**For production benchmarks:**
+Implement Option A (CPU fallback) or Option B (quantum optimization).
 
-**DARPA Demo Options:**
-1. **Full Quantum:** Use test_prct_solve_tiny.rs (K3) to show complete pipeline
-2. **Scalability:** Use dimacs_clean_architecture.rs to show large graph handling
-3. **Flexibility:** Both modes demonstrate hexagonal architecture working
-
-**Architecture Status: ✅ PRODUCTION READY**
+**Architecture mission: ✅ COMPLETE**
