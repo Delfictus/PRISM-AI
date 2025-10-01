@@ -15,7 +15,7 @@ crossbeam = "0.8"
 dashmap = "6.0"
 parking_lot = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
-ndarray = "0.16"
+ndarray = "0.15"
 num-complex = "0.4"
 
 [lib]

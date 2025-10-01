@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 nalgebra = { version = "0.33", features = ["std"] }
-ndarray = "0.16"
+ndarray = "0.15"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }

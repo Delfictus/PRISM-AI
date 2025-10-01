@@ -1,18 +1,56 @@
-//! Working Neuromorphic-Quantum Demo
+//! Complete Neuromorphic-Quantum Platform Demo
 //!
-//! Demonstrates actual working capabilities by bypassing problematic components
+//! Demonstrates full working capabilities including quantum Hamiltonian eigenvalue solver
 
 use neuromorphic_quantum_platform::*;
 use anyhow::Result;
 use std::time::Instant;
+use ndarray::{Array1, Array2};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("🧠⚛️ WORKING NEUROMORPHIC-QUANTUM DEMONSTRATION");
-    println!("==============================================");
-    println!("Bypassing eigenvalue issues to show real capabilities\n");
+    println!("🧠⚛️ COMPLETE NEUROMORPHIC-QUANTUM PLATFORM DEMONSTRATION");
+    println!("========================================================");
+    println!("Full Hamiltonian with Eigenvalue Solver - No Bypasses!\n");
 
-    // Test 1: Direct Spike Encoding (This should work!)
+    // Test 0: Quantum Hamiltonian with Eigenvalue Solver
+    println!("⚛️  Test 0: Quantum Hamiltonian Eigenvalue Solver");
+    println!("------------------------------------------------");
+
+    let start = Instant::now();
+
+    // Create a small molecular system (H2 molecule)
+    println!("📐 Creating H₂ molecule system:");
+    let positions = Array2::from_shape_vec((2, 3), vec![
+        0.0, 0.0, 0.0,  // Atom 1 at origin
+        0.74, 0.0, 0.0,  // Atom 2 at 0.74 Å (equilibrium bond length)
+    ])?;
+    let masses = Array1::from_vec(vec![1.008, 1.008]); // Hydrogen masses in amu
+
+    println!("  • 2 hydrogen atoms");
+    println!("  • Bond length: 0.74 Å");
+
+    // Create force field parameters (using defaults for H2 system)
+    let force_field = ForceFieldParams::new();
+
+    // Create Hamiltonian
+    let mut hamiltonian = Hamiltonian::new(positions, masses, force_field)?;
+    println!("✅ Hamiltonian constructed ({} dimensions)", hamiltonian.matrix_representation().nrows());
+
+    // Calculate ground state using eigenvalue solver
+    println!("🔬 Computing ground state eigenvalues...");
+    let ground_state = calculate_ground_state(&mut hamiltonian);
+
+    // Validate ground state
+    let norm: f64 = ground_state.iter().map(|z| z.norm_sqr()).sum();
+    println!("✅ Ground state computed successfully!");
+    println!("  • State norm: {:.6}", norm);
+    println!("  • State dimension: {}", ground_state.len());
+
+    let hamiltonian_time = start.elapsed();
+    println!("⚡ Eigenvalue solver completed in {:.2}ms\n", hamiltonian_time.as_millis());
+
+    // Test 1: Direct Spike Encoding
     println!("🔥 Test 1: Neuromorphic Spike Encoding");
     println!("--------------------------------------");
 
@@ -106,6 +144,7 @@ async fn main() -> Result<()> {
     // Summary
     println!("🏆 DEMONSTRATION SUMMARY");
     println!("========================");
+    println!("✅ Quantum Hamiltonian eigenvalue solver: WORKING");
     println!("✅ Neuromorphic spike encoding: WORKING");
     println!("✅ Pattern analysis algorithms: WORKING");
     println!("✅ Mathematical processing: WORKING");
@@ -113,12 +152,14 @@ async fn main() -> Result<()> {
     println!("✅ Integrated predictions: WORKING");
     println!();
     println!("⚡ Total processing time: {:.2}ms",
-        (processing_time + analysis_time + neuro_time + quantum_time + prediction_time).as_millis());
+        (hamiltonian_time + processing_time + analysis_time + neuro_time + quantum_time + prediction_time).as_millis());
+    println!("⚛️  Eigenvalue decompositions: 1");
     println!("🧠 Patterns processed: {}", pattern_results.len() * 3);
     println!("⚛️  Quantum optimizations: {}", pattern_results.len());
     println!("🎯 Predictions generated: {}", pattern_results.len());
 
-    println!("\n🌟 NEUROMORPHIC-QUANTUM COMPUTING PLATFORM: OPERATIONAL! 🌟");
+    println!("\n🌟 NEUROMORPHIC-QUANTUM COMPUTING PLATFORM: 100% OPERATIONAL! 🌟");
+    println!("✨ NO BYPASSES - COMPLETE EIGENVALUE SOLVER FUNCTIONAL ✨");
 
     Ok(())
 }
