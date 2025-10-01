@@ -1,0 +1,314 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║         COMPREHENSIVE BENCHMARK SUITE - ARES PLATFORM            ║
+║     Full Neuromorphic-Quantum Integration with Physics Coupling  ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+🔍 HARDWARE DETECTION:
+   ✅ GPU: NVIDIA GeForce RTX 5070 Laptop GPU, 581.29
+
+═══════════════════════════════════════════════════════════════════
+  GRAPH COLORING BENCHMARKS (DIMACS)
+═══════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: dsjc125.1
+   Description: Sparse 125-vertex graph (density 0.1)
+   Known best: χ = 5
+
+  🔍 Physics input: 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+  🔬 Physics Coupling Active:
+     Spike coherence: 0.2226
+     Neuro→Quantum coupling: 0.5900
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9999
+     Search range: k=2..22
+   ✅ Results:
+      Full Platform: 2.98s → 22 colors
+      GPU Only:      1.19s → FAILED colors
+      Quality gap:   +17 from optimal
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: dsjc250.5
+   Description: Dense 250-vertex graph (density 0.5)
+   Known best: χ = 28
+
+  🔍 Physics input: 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+  🔬 Physics Coupling Active:
+     Spike coherence: 0.3808
+     Neuro→Quantum coupling: 0.4996
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9999
+     Search range: k=2..25
+   ✅ Results:
+      Full Platform: 2.06s → 25 colors
+      GPU Only:      3.14s → FAILED colors
+      Quality gap:   +3 from optimal
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: dsjc500.1
+   Description: Sparse 500-vertex graph (density 0.1)
+   Known best: χ = 12
+
+  🔍 Physics input: 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+  🔬 Physics Coupling Active:
+     Spike coherence: 0.2281
+     Neuro→Quantum coupling: 0.4272
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9999
+     Search range: k=2..19
+   ✅ Results:
+      Full Platform: 1.60s → 19 colors
+      GPU Only:      1.81s → FAILED colors
+      Quality gap:   +7 from optimal
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: dsjc500.5
+   Description: Dense 500-vertex graph (density 0.5)
+   Known best: χ = 48
+
+  🔍 Physics input: 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+  🔬 Physics Coupling Active:
+     Spike coherence: 0.3808
+     Neuro→Quantum coupling: 0.5692
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9998
+     Search range: k=2..26
+   ✅ Results:
+      Full Platform: 2.23s → 26 colors
+      GPU Only:      4.94s → FAILED colors
+      Quality gap:   +22 from optimal
+
+═══════════════════════════════════════════════════════════════════
+  TSP BENCHMARKS (Random Euclidean)
+═══════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: tsp_100
+   Description: 100-city random Euclidean TSP
+
+  🔍 Physics input (TSP): 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+🔧 Initializing GPU TSP Solver for 100 cities...
+  ✓ Initial tour (nearest-neighbor): length = 2.00
+  🔬 Physics Coupling Active (TSP):
+     Spike coherence: 0.1292
+     Neuro→Quantum coupling: 0.4978
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9999
+     2-opt iterations: 62
+🔄 Running GPU 2-opt optimization (max 3 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 3 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+     Initial tour length: 2.00
+     Final tour length: 2.00
+     Improvement: 0.00%
+🔧 Initializing GPU TSP Solver for 100 cities...
+  ✓ Initial tour (nearest-neighbor): length = 8.09
+🔄 Running GPU 2-opt optimization (max 100 iterations)...
+  Iteration 0: tour length = 7.84 (improved by 0.2518)
+  Iteration 10: tour length = 7.05 (improved by 0.0333)
+  ✓ Optimization complete: 18 iterations, 17 improvements
+  ✓ Final tour length: 6.99
+   ✅ Results:
+      Full Platform: 0.10s → tour=2.00, improvement=75.3%
+      GPU Only:      0.07s → tour=6.99, improvement=13.6%
+      Speedup:       0.64×
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: tsp_500
+   Description: 500-city random Euclidean TSP
+
+  🔍 Physics input (TSP): 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+🔧 Initializing GPU TSP Solver for 500 cities...
+  ✓ Initial tour (nearest-neighbor): length = 2.00
+  🔬 Physics Coupling Active (TSP):
+     Spike coherence: 0.0589
+     Neuro→Quantum coupling: 0.5328
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9999
+     2-opt iterations: 63
+🔄 Running GPU 2-opt optimization (max 3 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+     Initial tour length: 2.00
+     Final tour length: 2.00
+     Improvement: 0.00%
+🔧 Initializing GPU TSP Solver for 500 cities...
+  ✓ Initial tour (nearest-neighbor): length = 15.53
+🔄 Running GPU 2-opt optimization (max 100 iterations)...
+  Iteration 0: tour length = 15.40 (improved by 0.1324)
+  Iteration 10: tour length = 14.54 (improved by 0.0434)
+  Iteration 20: tour length = 14.12 (improved by 0.0332)
+  Iteration 30: tour length = 13.76 (improved by 0.0228)
+  Iteration 40: tour length = 13.53 (improved by 0.0161)
+  Iteration 50: tour length = 13.41 (improved by 0.0073)
+  Iteration 60: tour length = 13.33 (improved by 0.0036)
+  ✓ Optimization complete: 70 iterations, 69 improvements
+  ✓ Final tour length: 13.32
+   ✅ Results:
+      Full Platform: 0.12s → tour=2.00, improvement=87.1%
+      GPU Only:      0.09s → tour=13.32, improvement=14.2%
+      Speedup:       0.77×
+
+───────────────────────────────────────────────────────────────────
+📍 Benchmark: tsp_1000
+   Description: 1000-city random Euclidean TSP
+
+  🔍 Physics input (TSP): 100 neuro activations, 100 spike times, 100 quantum states
+     🔬 Initializing physics coupling...
+     🔍 Transfer entropy inputs: neuro=100, spike_pattern=100, quantum=100
+     🔍 Transfer entropy: N→Q=0.0000, Q→N=0.0000
+🔧 Initializing GPU TSP Solver for 1000 cities...
+  ✓ Initial tour (nearest-neighbor): length = 2.00
+  🔬 Physics Coupling Active (TSP):
+     Spike coherence: 0.0417
+     Neuro→Quantum coupling: 0.5681
+     Transfer entropy: 0.0000
+     Kuramoto order parameter: 0.9999
+     2-opt iterations: 64
+🔄 Running GPU 2-opt optimization (max 3 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+🔄 Running GPU 2-opt optimization (max 6 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 2.00
+     Initial tour length: 2.00
+     Final tour length: 2.00
+     Improvement: 0.00%
+🔧 Initializing GPU TSP Solver for 1000 cities...
+  ✓ Initial tour (nearest-neighbor): length = 21.39
+🔄 Running GPU 2-opt optimization (max 100 iterations)...
+  Iteration 0: tour length = 21.24 (improved by 0.1511)
+  Iteration 10: tour length = 20.25 (improved by 0.0714)
+  Iteration 20: tour length = 19.62 (improved by 0.0471)
+  Iteration 30: tour length = 19.17 (improved by 0.0373)
+  Iteration 40: tour length = 18.84 (improved by 0.0294)
+  Iteration 50: tour length = 18.57 (improved by 0.0232)
+  Iteration 60: tour length = 18.34 (improved by 0.0177)
+  Iteration 70: tour length = 18.17 (improved by 0.0147)
+  Iteration 80: tour length = 18.04 (improved by 0.0237)
+  Iteration 90: tour length = 17.94 (improved by 0.0085)
+  ✓ Optimization complete: 100 iterations, 100 improvements
+  ✓ Final tour length: 17.83
+   ✅ Results:
+      Full Platform: 0.14s → tour=2.00, improvement=90.6%
+      GPU Only:      0.15s → tour=17.83, improvement=16.6%
+      Speedup:       1.06×
+
+═══════════════════════════════════════════════════════════════════
+  SUMMARY
+═══════════════════════════════════════════════════════════════════
+
+📊 Graph Coloring Results:
+
+| Benchmark | Vertices | Full Platform | GPU Only | Quality |
+|-----------|----------|---------------|----------|---------|
+| dsjc125.1 | 125 | 2.98s (χ=22) | FAILED | +17 |
+| dsjc250.5 | 250 | 2.06s (χ=25) | FAILED | +-3 |
+| dsjc500.1 | 500 | 1.60s (χ=19) | FAILED | +7 |
+| dsjc500.5 | 500 | 2.23s (χ=26) | FAILED | +-22 |
+
+📊 TSP Results:
+
+| Benchmark | Cities | Full Platform | GPU Only | Speedup |
+|-----------|--------|---------------|----------|---------|
+| tsp_100 | 100 | 0.10s | 0.07s | 0.64× |
+| tsp_500 | 500 | 0.12s | 0.09s | 0.77× |
+| tsp_1000 | 1000 | 0.14s | 0.15s | 1.06× |
+
+═══════════════════════════════════════════════════════════════════

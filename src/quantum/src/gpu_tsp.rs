@@ -77,20 +77,25 @@ impl GpuTspSolver {
     ) -> Result<Array2<f64>> {
         let n = coupling_matrix.nrows();
 
-        // Load PTX kernels
-        let out_dir = std::env::var("OUT_DIR")
-            .map_err(|_| anyhow!("OUT_DIR not set - build script may have failed"))?;
-        let ptx_path = std::path::Path::new(&out_dir).join("tsp_solver.ptx");
-
-        if !ptx_path.exists() {
-            return Err(anyhow!(
-                "PTX file not found at {:?}. Build script may have failed. Run: cargo clean && cargo build",
-                ptx_path
-            ));
-        }
-
-        let ptx = std::fs::read_to_string(&ptx_path)
-            .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?;
+        // Load PTX kernels from runtime location
+        // First try OUT_DIR (when running as library during build)
+        let ptx = if let Ok(out_dir) = std::env::var("OUT_DIR") {
+            let ptx_path = std::path::Path::new(&out_dir).join("tsp_solver.ptx");
+            if ptx_path.exists() {
+                std::fs::read_to_string(&ptx_path)
+                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?
+            } else {
+                // Fallback to runtime location
+                let runtime_path = std::path::Path::new("target/ptx/tsp_solver.ptx");
+                std::fs::read_to_string(runtime_path)
+                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+            }
+        } else {
+            // Runtime: use known location
+            let runtime_path = std::path::Path::new("target/ptx/tsp_solver.ptx");
+            std::fs::read_to_string(runtime_path)
+                .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+        };
 
         if ptx.is_empty() || !ptx.contains("compute_distance_matrix") {
             return Err(anyhow!(
@@ -251,20 +256,22 @@ impl GpuTspSolver {
 
     /// Optimize tour using GPU-accelerated 2-opt
     pub fn optimize_2opt_gpu(&mut self, max_iterations: usize) -> Result<()> {
-        // Load PTX kernels
-        let out_dir = std::env::var("OUT_DIR")
-            .map_err(|_| anyhow!("OUT_DIR not set - build script may have failed"))?;
-        let ptx_path = std::path::Path::new(&out_dir).join("tsp_solver.ptx");
-
-        if !ptx_path.exists() {
-            return Err(anyhow!(
-                "PTX file not found at {:?}. Build script may have failed. Run: cargo clean && cargo build",
-                ptx_path
-            ));
-        }
-
-        let ptx = std::fs::read_to_string(&ptx_path)
-            .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?;
+        // Load PTX kernels from runtime location
+        let ptx = if let Ok(out_dir) = std::env::var("OUT_DIR") {
+            let ptx_path = std::path::Path::new(&out_dir).join("tsp_solver.ptx");
+            if ptx_path.exists() {
+                std::fs::read_to_string(&ptx_path)
+                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?
+            } else {
+                let runtime_path = std::path::Path::new("target/ptx/tsp_solver.ptx");
+                std::fs::read_to_string(runtime_path)
+                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+            }
+        } else {
+            let runtime_path = std::path::Path::new("target/ptx/tsp_solver.ptx");
+            std::fs::read_to_string(runtime_path)
+                .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
+        };
 
         if ptx.is_empty() || !ptx.contains("evaluate_2opt_swaps") {
             return Err(anyhow!(

@@ -70,5 +70,14 @@ fn main() {
         panic!("nvcc compilation failed for tsp_solver.cu");
     }
 
+    // Copy PTX files to a known location for runtime access
+    let project_root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let runtime_ptx_dir = project_root.join("target").join("ptx");
+    std::fs::create_dir_all(&runtime_ptx_dir).unwrap();
+
+    std::fs::copy(&graph_coloring_ptx, runtime_ptx_dir.join("graph_coloring.ptx")).unwrap();
+    std::fs::copy(&tsp_solver_ptx, runtime_ptx_dir.join("tsp_solver.ptx")).unwrap();
+
     println!("cargo:warning=CUDA kernels compiled successfully (graph_coloring.cu + tsp_solver.cu)");
+    println!("cargo:warning=PTX files copied to target/ptx/ for runtime access");
 }
