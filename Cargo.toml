@@ -79,6 +79,10 @@ path = "examples/prct_demonstration.rs"
 name = "streaming_demo"
 path = "examples/streaming_demo.rs"
 
+[[example]]
+name = "error_handling_demo"
+path = "examples/error_handling_demo.rs"
+
 [lib]
 name = "neuromorphic_quantum_platform"
 path = "src/lib.rs"

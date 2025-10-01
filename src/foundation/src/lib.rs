@@ -10,5 +10,8 @@ pub mod adapters;
 // Re-export main components
 pub use platform::NeuromorphicQuantumPlatform;
 pub use types::*;
-pub use ingestion::{IngestionEngine, IngestionStats, DataPoint, DataSource, SourceInfo};
+pub use ingestion::{
+    CircuitBreaker, CircuitBreakerState, DataPoint, DataSource, IngestionEngine, IngestionError,
+    IngestionStats, RetryPolicy, SourceInfo,
+};
 pub use adapters::{AlpacaMarketDataSource, OpticalSensorArray, SyntheticDataSource};

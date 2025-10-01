@@ -1,8 +1,10 @@
 //! Ingestion engine for managing multiple data sources
 
 use super::buffer::CircularBuffer;
+use super::error::{CircuitBreaker, IngestionError, RetryPolicy};
 use super::types::{DataPoint, DataSource, SourceInfo};
 use anyhow::Result;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
@@ -22,6 +24,12 @@ pub struct IngestionStats {
     pub active_sources: usize,
     /// Number of errors encountered
     pub error_count: usize,
+    /// Number of successful retries
+    pub retry_success_count: usize,
+    /// Number of failed retries
+    pub retry_failed_count: usize,
+    /// Circuit breaker states by source
+    pub circuit_breaker_states: HashMap<String, String>,
 }
 
 impl Default for IngestionStats {
@@ -33,6 +41,9 @@ impl Default for IngestionStats {
             average_rate_hz: 0.0,
             active_sources: 0,
             error_count: 0,
+            retry_success_count: 0,
+            retry_failed_count: 0,
+            circuit_breaker_states: HashMap::new(),
         }
     }
 }
@@ -49,6 +60,10 @@ pub struct IngestionEngine {
     stats: Arc<RwLock<IngestionStats>>,
     /// Start time for rate calculation
     start_time: Instant,
+    /// Retry policy for transient failures
+    retry_policy: RetryPolicy,
+    /// Circuit breakers per source
+    circuit_breakers: Arc<RwLock<HashMap<String, CircuitBreaker>>>,
 }
 
 impl IngestionEngine {
@@ -58,6 +73,20 @@ impl IngestionEngine {
     /// * `channel_size` - Size of the async channel buffer
     /// * `history_size` - Size of the historical circular buffer
     pub fn new(channel_size: usize, history_size: usize) -> Self {
+        Self::with_retry_policy(channel_size, history_size, RetryPolicy::default())
+    }
+
+    /// Create a new ingestion engine with custom retry policy
+    ///
+    /// # Arguments
+    /// * `channel_size` - Size of the async channel buffer
+    /// * `history_size` - Size of the historical circular buffer
+    /// * `retry_policy` - Retry policy for handling failures
+    pub fn with_retry_policy(
+        channel_size: usize,
+        history_size: usize,
+        retry_policy: RetryPolicy,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(channel_size);
 
         Self {
@@ -66,6 +95,8 @@ impl IngestionEngine {
             rx: Some(rx),
             stats: Arc::new(RwLock::new(IngestionStats::default())),
             start_time: Instant::now(),
+            retry_policy,
+            circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -73,11 +104,56 @@ impl IngestionEngine {
     ///
     /// Spawns an async task to continuously read from the source
     pub async fn start_source(&mut self, mut source: Box<dyn DataSource>) -> Result<()> {
-        // Connect to source
-        source.connect().await?;
-
         let source_info = source.get_source_info();
-        log::info!("Starting ingestion from: {}", source_info.name);
+        let source_name = source_info.name.clone();
+
+        // Initialize circuit breaker for this source
+        {
+            let mut breakers = self.circuit_breakers.write().await;
+            breakers.insert(source_name.clone(), CircuitBreaker::default());
+        }
+
+        // Connect to source with retry
+        let mut retry_count = 0;
+        loop {
+            match source.connect().await {
+                Ok(_) => {
+                    log::info!("Successfully connected to: {}", source_name);
+                    break;
+                }
+                Err(e) => {
+                    if retry_count >= self.retry_policy.max_attempts {
+                        log::error!(
+                            "Failed to connect to {} after {} attempts: {}",
+                            source_name,
+                            retry_count,
+                            e
+                        );
+                        return Err(IngestionError::ConnectionFailed {
+                            source: source_name,
+                            reason: e.to_string(),
+                            retryable: false,
+                        }
+                        .into());
+                    }
+
+                    let backoff = self.retry_policy.backoff_delay(retry_count);
+                    log::warn!(
+                        "Failed to connect to {} (attempt {}/{}): {}. Retrying in {}ms",
+                        source_name,
+                        retry_count + 1,
+                        self.retry_policy.max_attempts,
+                        e,
+                        backoff
+                    );
+
+                    tokio::time::sleep(Duration::from_millis(backoff)).await;
+                    retry_count += 1;
+                }
+            }
+        }
+
+        log::info!("Starting ingestion from: {}", source_name);
 
         // Update stats
         {
@@ -88,9 +164,19 @@ impl IngestionEngine {
         // Spawn ingestion task
         let tx = self.tx.clone();
         let stats = Arc::clone(&self.stats);
+        let circuit_breakers = Arc::clone(&self.circuit_breakers);
+        let retry_policy = self.retry_policy.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = Self::ingest_from_source(source, tx, stats).await {
+            if let Err(e) = Self::ingest_from_source_with_recovery(
+                source,
+                tx,
+                stats,
+                circuit_breakers,
+                retry_policy,
+            )
+            .await
+            {
                 log::error!("Ingestion task failed: {}", e);
             }
         });
@@ -98,7 +184,144 @@ impl IngestionEngine {
         Ok(())
     }
 
-    /// Internal task to ingest from a single source
+    /// Internal task to ingest from a single source with retry and circuit breaker
+    async fn ingest_from_source_with_recovery(
+        mut source: Box<dyn DataSource>,
+        tx: mpsc::Sender<DataPoint>,
+        stats: Arc<RwLock<IngestionStats>>,
+        circuit_breakers: Arc<RwLock<HashMap<String, CircuitBreaker>>>,
+        retry_policy: RetryPolicy,
+    ) -> Result<()> {
+        let source_info = source.get_source_info();
+        let source_name = source_info.name.clone();
+
+        loop {
+            // Check circuit breaker
+            {
+                let breakers = circuit_breakers.read().await;
+                if let Some(cb) = breakers.get(&source_name) {
+                    if !cb.is_closed() {
+                        log::warn!(
+                            "Circuit breaker open for {}, waiting before retry...",
+                            source_name
+                        );
+                        tokio::time::sleep(Duration::from_millis(cb.timeout_ms)).await;
+                        continue;
+                    }
+                }
+            }
+
+            // Try to read batch with retries
+            let mut retry_count = 0;
+            let result = loop {
+                match source.read_batch().await {
+                    Ok(batch) => break Ok(batch),
+                    Err(e) => {
+                        if retry_count >= retry_policy.max_attempts {
+                            break Err(e);
+                        }
+
+                        let backoff = retry_policy.backoff_delay(retry_count);
+                        log::warn!(
+                            "Error reading from {} (attempt {}/{}): {}. Retrying in {}ms",
+                            source_name,
+                            retry_count + 1,
+                            retry_policy.max_attempts,
+                            e,
+                            backoff
+                        );
+
+                        tokio::time::sleep(Duration::from_millis(backoff)).await;
+                        retry_count += 1;
+                    }
+                }
+            };
+
+            match result {
+                Ok(batch) => {
+                    let batch_size = batch.len();
+
+                    if batch_size == 0 {
+                        // No data, wait a bit
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        continue;
+                    }
+
+                    // Send each point through the channel
+                    for point in batch {
+                        if tx.send(point).await.is_err() {
+                            log::warn!("Ingestion channel closed for {}", source_name);
+                            return Err(IngestionError::ChannelClosed {
+                                source: source_name.clone(),
+                            }
+                            .into());
+                        }
+                    }
+
+                    // Success - update circuit breaker and stats
+                    {
+                        let mut breakers = circuit_breakers.write().await;
+                        if let Some(cb) = breakers.get_mut(&source_name) {
+                            cb.record_success();
+                        }
+                    }
+
+                    {
+                        let mut s = stats.write().await;
+                        s.total_points += batch_size;
+                        s.last_update = Instant::now();
+
+                        if retry_count > 0 {
+                            s.retry_success_count += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Error reading from {} after retries: {}", source_name, e);
+
+                    // Record failure in circuit breaker
+                    {
+                        let mut breakers = circuit_breakers.write().await;
+                        if let Some(cb) = breakers.get_mut(&source_name) {
+                            cb.record_failure();
+
+                            // Check if circuit breaker opened
+                            if !cb.is_closed() {
+                                log::error!(
+                                    "Circuit breaker opened for {} after {} errors (threshold: {})",
+                                    source_name,
+                                    cb.error_count(),
+                                    cb.error_threshold
+                                );
+                            }
+                        }
+                    }
+
+                    // Update error stats
+                    {
+                        let mut s = stats.write().await;
+                        s.error_count += 1;
+                        s.retry_failed_count += 1;
+                    }
+
+                    // Try to reconnect
+                    log::info!("Attempting to reconnect to {}...", source_name);
+                    if let Err(reconnect_err) = source.connect().await {
+                        log::error!(
+                            "Failed to reconnect to {}: {}",
+                            source_name,
+                            reconnect_err
+                        );
+                    }
+
+                    // Wait before next attempt
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            }
+        }
+    }
+
+    /// Internal task to ingest from a single source (legacy without retry)
     async fn ingest_from_source(
         mut source: Box<dyn DataSource>,
         tx: mpsc::Sender<DataPoint>,
@@ -209,7 +432,33 @@ impl IngestionEngine {
             stats.average_rate_hz = stats.total_points as f64 / elapsed;
         }
 
+        // Update circuit breaker states
+        let breakers = self.circuit_breakers.read().await;
+        for (source, cb) in breakers.iter() {
+            let state_str = match cb.state() {
+                super::error::CircuitBreakerState::Closed => "closed",
+                super::error::CircuitBreakerState::Open => "open",
+                super::error::CircuitBreakerState::HalfOpen => "half-open",
+            };
+            stats
+                .circuit_breaker_states
+                .insert(source.clone(), state_str.to_string());
+        }
+
         stats
+    }
+
+    /// Get circuit breaker status for a source
+    pub async fn get_circuit_breaker_status(&self, source_name: &str) -> Option<String> {
+        let breakers = self.circuit_breakers.read().await;
+        breakers.get(source_name).map(|cb| {
+            format!(
+                "state={:?}, errors={}/{}",
+                cb.state(),
+                cb.error_count(),
+                cb.error_threshold
+            )
+        })
     }
 
     /// Get buffer size
