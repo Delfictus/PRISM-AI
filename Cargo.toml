@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["ARES-51 Research"]
 description = "World's first software-based neuromorphic-quantum computing platform"
 license = "MIT"
+build = "build_cuda.rs"
 
 [workspace]
 members = [
@@ -34,6 +35,9 @@ ndarray = "0.15"
 num-complex = "0.4"
 env_logger = "0.11"
 log = "0.4"
+rand = "0.8"
+uuid = { version = "1.0", features = ["v4"] }
+chrono = "0.4"
 
 [[example]]
 name = "platform_demo"
@@ -86,6 +90,54 @@ path = "examples/error_handling_demo.rs"
 [[example]]
 name = "stress_test_demo"
 path = "examples/stress_test_demo.rs"
+
+[[example]]
+name = "dimacs_benchmark_runner_gpu"
+path = "examples/dimacs_benchmark_runner_gpu.rs"
+
+[[example]]
+name = "test_gpu_minimal"
+path = "examples/test_gpu_minimal.rs"
+
+[[example]]
+name = "debug_gpu_coloring"
+path = "examples/debug_gpu_coloring.rs"
+
+[[example]]
+name = "verify_gpu_usage"
+path = "examples/verify_gpu_usage.rs"
+
+[[example]]
+name = "test_gpu_tsp"
+path = "examples/test_gpu_tsp.rs"
+
+[[example]]
+name = "tsp_benchmark_runner_gpu"
+path = "examples/tsp_benchmark_runner_gpu.rs"
+
+[[example]]
+name = "large_scale_tsp_demo"
+path = "examples/large_scale_tsp_demo.rs"
+
+[[example]]
+name = "qubo_loihi_benchmark"
+path = "examples/qubo_loihi_benchmark.rs"
+
+[[example]]
+name = "lkh_comparison_benchmark"
+path = "examples/lkh_comparison_benchmark.rs"
+
+[[example]]
+name = "lkh_large_scale_comparison"
+path = "examples/lkh_large_scale_comparison.rs"
+
+[[example]]
+name = "full_platform_benchmark"
+path = "examples/full_platform_benchmark.rs"
+
+[[example]]
+name = "full_platform_coloring_benchmark"
+path = "examples/full_platform_coloring_benchmark.rs"
 
 [lib]
 name = "neuromorphic_quantum_platform"

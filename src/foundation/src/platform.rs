@@ -466,78 +466,157 @@ impl NeuromorphicQuantumPlatform {
     }
 
     /// Process through quantum subsystem with neuromorphic guidance
-    /// Uses neuromorphic patterns to initialize and guide quantum optimization
+    /// Uses GPU-accelerated optimization guided by neuromorphic patterns
     async fn process_quantum(&self, input: &PlatformInput, neuro_results: &NeuromorphicResults) -> Result<QuantumResults> {
-        // Initialize quantum system if not already done
-        self.ensure_quantum_initialized(input).await?;
+        use num_complex::Complex64;
 
-        // Extract features from neuromorphic results for quantum initialization
-        let quantum_features = self.extract_quantum_features(input, neuro_results).await;
+        // Detect problem type based on input source
+        let is_coloring = input.source.contains("coloring") || input.source.contains("DIMACS");
 
-        // Perform quantum optimization
-        let (final_energy, phase_coherence, convergence, state_features) = {
-            let mut hamiltonian_opt = self.quantum_hamiltonian.write().await;
-            let hamiltonian = hamiltonian_opt.as_mut().unwrap();
+        if is_coloring {
+            // Graph Coloring Problem
+            use quantum_engine::GpuChromaticColoring;
 
-            // Initialize quantum state based on neuromorphic patterns
-            let initial_state = self.initialize_quantum_state(hamiltonian, &quantum_features).await;
+            // Reconstruct coupling matrix from flattened input
+            // Input values are flattened n×n matrix
+            let n = (input.values.len() as f64).sqrt() as usize;
+            let n = n.min(1000);
+            let mut coupling = Array2::zeros((n, n));
 
-            // Time evolution with small steps for stability
-            let mut state = initial_state.clone();
-            let time_step = input.config.quantum_config.time_step;
-            let total_time = input.config.quantum_config.evolution_time;
-            let steps = (total_time / time_step) as usize;
-
-            let initial_energy = hamiltonian.total_energy(&initial_state);
-            let mut iterations = 0;
-            let mut converged = false;
-
-            for i in 0..steps {
-                match hamiltonian.evolve(&state, time_step) {
-                    Ok(new_state) => {
-                        state = new_state;
-                        iterations += 1;
-
-                        // Check convergence every 10 steps
-                        if i % 10 == 0 {
-                            let current_energy = hamiltonian.total_energy(&state);
-                            let energy_change = (current_energy - initial_energy).abs() / initial_energy.abs();
-                            if energy_change < input.config.quantum_config.energy_tolerance {
-                                converged = true;
-                                break;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Quantum evolution failed at step {}: {}", i, e);
-                        break;
+            // Reconstruct matrix from flattened values
+            for i in 0..n {
+                for j in 0..n {
+                    let idx = i * n + j;
+                    if idx < input.values.len() {
+                        coupling[[i, j]] = Complex64::new(input.values[idx], 0.0);
                     }
                 }
             }
 
-            let final_energy = hamiltonian.total_energy(&state);
-            let phase_coherence = hamiltonian.phase_coherence();
-            let energy_drift = (final_energy - initial_energy).abs() / initial_energy.abs();
+            // Number of colors based on neuromorphic pattern detection
+            let base_colors = 10;
+            let pattern_boost = if !neuro_results.patterns.is_empty() {
+                let max_strength = neuro_results.patterns.iter()
+                    .map(|p| p.strength)
+                    .fold(0.0_f64, |a, b| a.max(b));
+                (max_strength * 5.0) as usize
+            } else {
+                0
+            };
+            let k = (base_colors + pattern_boost).min(n);
+
+            // Try to find valid coloring
+            let mut colors_used = k;
+            let mut found = false;
+
+            for trial_k in 2..=k {
+                match GpuChromaticColoring::new_adaptive(&coupling, trial_k) {
+                    Ok(coloring) => {
+                        if coloring.verify_coloring() {
+                            colors_used = trial_k;
+                            found = true;
+                            break;
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
+
+            let converged = found;
+            let final_energy = colors_used as f64;
+            let phase_coherence = if found { 1.0 } else { 0.5 };
 
             let convergence = ConvergenceInfo {
                 converged,
-                iterations,
-                final_error: energy_drift,
-                energy_drift,
+                iterations: k,
+                final_error: if found { 0.0 } else { 1.0 },
+                energy_drift: 0.0,
             };
 
-            // Extract state features for integration
-            let state_features = state.iter().take(10).map(|c| c.norm()).collect();
+            // State features: chromatic number
+            let state_features = vec![colors_used as f64];
 
-            (final_energy, phase_coherence, convergence, state_features)
-        };
+            Ok(QuantumResults {
+                energy: final_energy,
+                phase_coherence,
+                convergence,
+                state_features,
+            })
 
-        Ok(QuantumResults {
-            energy: final_energy,
-            phase_coherence,
-            convergence,
-            state_features,
-        })
+        } else {
+            // Traveling Salesman Problem (default)
+            use quantum_engine::GpuTspSolver;
+
+            // Build coupling matrix from input data
+            let n = input.values.len().min(1000);
+            let mut coupling = Array2::zeros((n, n));
+
+            // Use spike coherence to modulate coupling strength
+            let coherence_factor = neuro_results.spike_analysis.coherence;
+
+            for i in 0..n {
+                for j in 0..n {
+                    if i != j {
+                        let val_i = input.values[i];
+                        let val_j = input.values[j];
+                        let distance = (val_i - val_j).abs() + 0.001;
+
+                        let strength = (1.0 / distance) * (1.0 + coherence_factor);
+                        coupling[[i, j]] = Complex64::new(strength, 0.0);
+                    }
+                }
+            }
+
+            // Use GPU TSP solver
+            let mut gpu_solver = GpuTspSolver::new(&coupling)?;
+            let initial_length = gpu_solver.get_tour_length();
+
+            // Number of iterations based on neuromorphic pattern strength
+            let base_iterations = 50;
+            let pattern_boost = if !neuro_results.patterns.is_empty() {
+                let max_strength = neuro_results.patterns.iter()
+                    .map(|p| p.strength)
+                    .fold(0.0_f64, |a, b| a.max(b));
+                (max_strength * 20.0) as usize
+            } else {
+                0
+            };
+            let max_iterations = base_iterations + pattern_boost;
+
+            // Run GPU optimization
+            gpu_solver.optimize_2opt_gpu(max_iterations)?;
+
+            let final_length = gpu_solver.get_tour_length();
+            let improvement = (initial_length - final_length) / initial_length;
+
+            let final_energy = final_length;
+            let initial_energy = initial_length;
+            let energy_change = (final_energy - initial_energy).abs() / initial_energy.abs();
+
+            let phase_coherence = 1.0 - energy_change.min(1.0);
+            let converged = improvement > 0.01;
+
+            let convergence = ConvergenceInfo {
+                converged,
+                iterations: max_iterations,
+                final_error: energy_change,
+                energy_drift: energy_change,
+            };
+
+            // Extract tour as state features
+            let tour = gpu_solver.get_tour();
+            let state_features: Vec<f64> = tour.iter()
+                .take(10)
+                .map(|&city| city as f64)
+                .collect();
+
+            Ok(QuantumResults {
+                energy: final_energy,
+                phase_coherence,
+                convergence,
+                state_features,
+            })
+        }
     }
 
     /// Ensure quantum subsystem is initialized

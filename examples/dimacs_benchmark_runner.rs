@@ -201,11 +201,13 @@ fn run_benchmark(spec: &BenchmarkSpec, time_limit_ms: u64) -> Result<BenchmarkRe
     let start = Instant::now();
     let mut computed = None;
 
-    // Determine search range
-    let (min_k, max_k) = match spec.known_best {
-        Some(known) => (known.saturating_sub(2).max(2), known + 10),
-        None => (2, vertices.min(50)),
+    // Determine search range - FAIR SEARCH from k=2
+    // DO NOT bias based on known_best - that's cheating!
+    let max_k = match spec.known_best {
+        Some(known) => (known + 10).min(vertices),
+        None => vertices.min(50),
     };
+    let min_k = 2;
 
     println!("    Searching k={}..{}", min_k, max_k);
 

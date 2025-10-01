@@ -1,0 +1,252 @@
+warning: unused imports: `PatternMetadata` and `Spike`
+ --> src/neuromorphic/src/reservoir.rs:5:34
+  |
+5 | use crate::types::{SpikePattern, Spike, PatternMetadata};
+  |                                  ^^^^^  ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Pattern`
+ --> src/neuromorphic/src/pattern_detector.rs:5:34
+  |
+5 | use crate::types::{SpikePattern, Pattern, PatternMetadata};
+  |                                  ^^^^^^^
+
+warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+   --> src/neuromorphic/src/pattern_detector.rs:347:38
+    |
+347 |         let now = chrono::Utc::now().timestamp_nanos() as u64;
+    |                                      ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+   --> src/neuromorphic/src/pattern_detector.rs:359:38
+    |
+359 |         let now = chrono::Utc::now().timestamp_nanos() as u64;
+    |                                      ^^^^^^^^^^^^^^^
+
+warning: unused variable: `reason`
+   --> src/neuromorphic/src/pattern_detector.rs:357:30
+    |
+357 |     fn record_failure(&self, reason: &str) {
+    |                              ^^^^^^ help: if this is intentional, prefix it with an underscore: `_reason`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: type `ReservoirStatistics` is more private than the item `ReservoirComputer::get_statistics`
+   --> src/neuromorphic/src/reservoir.rs:224:5
+    |
+224 |     pub fn get_statistics(&self) -> &ReservoirStatistics {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `ReservoirComputer::get_statistics` is reachable at visibility `pub`
+    |
+note: but type `ReservoirStatistics` is only usable at visibility `pub(self)`
+   --> src/neuromorphic/src/reservoir.rs:108:1
+    |
+108 | struct ReservoirStatistics {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: `neuromorphic-engine` (lib) generated 6 warnings (run `cargo fix --lib -p neuromorphic-engine` to apply 2 suggestions)
+warning: neuromorphic-quantum-platform@0.1.0: CUDA kernels compiled successfully (graph_coloring.cu + tsp_solver.cu)
+warning: unused import: `HashMap`
+  --> src/quantum/src/gpu_coloring.rs:10:24
+   |
+10 | use std::collections::{HashMap, HashSet};
+   |                        ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Context`
+ --> src/quantum/src/prct_tsp.rs:8:22
+  |
+8 | use anyhow::{Result, Context};
+  |                      ^^^^^^^
+
+warning: unused import: `Context`
+  --> src/quantum/src/qubo.rs:10:22
+   |
+10 | use anyhow::{anyhow, Context, Result};
+   |                      ^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+  --> src/quantum/src/qubo.rs:12:5
+   |
+12 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+
+warning: value assigned to `current_energy` is never read
+   --> src/quantum/src/qubo.rs:161:17
+    |
+161 |         let mut current_energy = self.best_energy;
+    |                 ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: fields `masses`, `stencil_order`, and `energy_tolerance` are never read
+   --> src/quantum/src/hamiltonian.rs:526:5
+    |
+519 | pub struct Hamiltonian {
+    |            ----------- fields in this struct
+...
+526 |     masses: Array1<f64>,
+    |     ^^^^^^
+...
+542 |     stencil_order: usize,   // Finite difference stencil order (9-point)
+    |     ^^^^^^^^^^^^^
+...
+572 |     energy_tolerance: f64,
+    |     ^^^^^^^^^^^^^^^^
+    |
+    = note: `Hamiltonian` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` on by default
+
+warning: methods `calculate_coupling_strength` and `pauli_dot_product` are never used
+    --> src/quantum/src/hamiltonian.rs:1180:8
+     |
+ 578 | impl Hamiltonian {
+     | ---------------- methods in this implementation
+...
+1180 |     fn calculate_coupling_strength(&self, i: usize, j: usize, _t: f64) -> Complex64 {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1191 |     fn pauli_dot_product(&self, _i: usize, _j: usize) -> Complex64 {
+     |        ^^^^^^^^^^^^^^^^^
+
+warning: `quantum-engine` (lib) generated 7 warnings (run `cargo fix --lib -p quantum-engine` to apply 4 suggestions)
+warning: unused imports: `EncodingMethod` and `EncodingParameters`
+  --> src/foundation/src/platform.rs:9:19
+   |
+ 9 |     SpikeEncoder, EncodingParameters, ReservoirComputer, PatternDetector,
+   |                   ^^^^^^^^^^^^^^^^^^
+10 |     InputData, EncodingMethod
+   |                ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `calculate_ground_state`
+  --> src/foundation/src/platform.rs:13:53
+   |
+13 | use quantum_engine::{Hamiltonian, ForceFieldParams, calculate_ground_state};
+   |                                                     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SourceInfo`
+ --> src/foundation/src/ingestion/engine.rs:5:43
+  |
+5 | use super::types::{DataPoint, DataSource, SourceInfo};
+  |                                           ^^^^^^^^^^
+
+warning: unused import: `nalgebra::DVector`
+  --> src/foundation/src/coupling_physics.rs:14:5
+   |
+14 | use nalgebra::DVector;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/foundation/src/coupling_physics.rs:16:5
+   |
+16 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/foundation/src/platform.rs:211:33
+    |
+211 |     pub async fn process(&self, mut input: PlatformInput) -> Result<PlatformOutput> {
+    |                                 ----^^^^^
+    |                                 |
+    |                                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: field `state_to_reservoir` is never read
+   --> src/foundation/src/platform.rs:101:5
+    |
+ 95 | struct BidirectionalCoupling {
+    |        --------------------- field in this struct
+...
+101 |     state_to_reservoir: f64,
+    |     ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `BidirectionalCoupling` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` on by default
+
+warning: associated function `ingest_from_source` is never used
+   --> src/foundation/src/ingestion/engine.rs:325:14
+    |
+ 69 | impl IngestionEngine {
+    | -------------------- associated function in this implementation
+...
+325 |     async fn ingest_from_source(
+    |              ^^^^^^^^^^^^^^^^^^
+
+warning: `platform-foundation` (lib) generated 8 warnings (run `cargo fix --lib -p platform-foundation` to apply 6 suggestions)
+warning: fields `gpu_length` and `lkh_length` are never read
+  --> examples/lkh_large_scale_comparison.rs:20:5
+   |
+16 | struct ComparisonResult {
+   |        ---------------- fields in this struct
+...
+20 |     gpu_length: f64,
+   |     ^^^^^^^^^^
+21 |     lkh_time: f64,
+22 |     lkh_length: f64,
+   |     ^^^^^^^^^^
+   |
+   = note: `ComparisonResult` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `neuromorphic-quantum-platform` (example "lkh_large_scale_comparison") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.35s
+     Running `target/release/examples/lkh_large_scale_comparison`
+╔═══════════════════════════════════════════════════════════════════╗
+║        LARGE-SCALE: GPU 2-opt vs LKH-3                           ║
+║        The Crossover Point - Where GPU Dominates                 ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+🎯 ALGORITHMS:
+   • GPU 2-opt: Massively parallel (4,608 CUDA cores)
+   • LKH-3: Sequential sophistication (single CPU core)
+
+💻 HARDWARE:
+   • GPU: NVIDIA RTX 5070 Laptop
+   • CPU: Same laptop CPU for fair comparison
+
+📊 INSTANCES: 3 large-scale problems (13k-18k cities)
+
+⏱️  EXPECTED:
+   • GPU: 40-100 seconds per instance
+   • LKH: Hours per instance (1 hour time limit)
+
+═══════════════════════════════════════════════════════════════════
+  Starting large-scale head-to-head comparison...
+═══════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────────
+📍 Instance: usa13509
+   Description: USA Road Network (13,509 cities)
+   Cities: 13509
+
+  📥 Generating synthetic benchmark data...
+  📊 Generating 13509 × 13509 matrices...
+    Progress: 0/13509 cities
+    Progress: 2000/13509 cities
+    Progress: 4000/13509 cities
+    Progress: 6000/13509 cities
+    Progress: 8000/13509 cities
+    Progress: 10000/13509 cities
+    Progress: 12000/13509 cities
+  ✓ Data generated
+
+  🎮 Running GPU 2-opt...
+🔧 Initializing GPU TSP Solver for 13509 cities...
+  ✓ Initial tour (nearest-neighbor): length = 0.00
+🔄 Running GPU 2-opt optimization (max 100 iterations)...
+  ✓ Optimization complete: 1 iterations, 0 improvements
+  ✓ Final tour length: 0.00
+     ✓ GPU Time: 6.6s
+     ✓ Tour Length: 118005.07
+     ✓ Improvement: 0.0%
+
+  📝 Creating TSPLIB file for LKH...
+  🧠 Running LKH-3 (time limit: 3600 seconds)...

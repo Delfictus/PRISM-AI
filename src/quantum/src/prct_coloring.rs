@@ -189,7 +189,9 @@ impl ChromaticColoring {
         for i in 0..n {
             for j in (i + 1)..n {
                 let coupling_strength = coupling_matrix[[i, j]].norm();
-                if coupling_strength > threshold {
+                // Use >= instead of > to include edges at exactly the threshold
+                // Critical fix: when threshold=1.0 and edges=1.0, we need >= not >
+                if coupling_strength >= threshold {
                     adjacency[[i, j]] = true;
                     adjacency[[j, i]] = true;
                 }
