@@ -168,11 +168,13 @@ impl GpuMemoryPool {
         let current_pool_size = self.pools.get(&size).map(|v| v.len()).unwrap_or(0);
 
         if current_pool_size < 8 {  // Max 8 buffers per size in pool
-            // Clear buffer memory for reuse
-            self.device.default_stream().memset_zeros(&buffer)?;
+            // Clear buffer memory for reuse (need mutable reference)
+            let mut buffer_mut = buffer;
+            self.device.default_stream().memset_zeros(&mut buffer_mut)
+                .map_err(|e| anyhow!("Failed to clear buffer: {}", e))?;
 
             // Add to pool
-            self.pools.entry(size).or_insert_with(Vec::new).push(buffer);
+            self.pools.entry(size).or_insert_with(Vec::new).push(buffer_mut);
         }
         // If pool is full, buffer will be automatically freed when dropped
 
@@ -181,7 +183,15 @@ impl GpuMemoryPool {
 
     /// Get current memory usage statistics
     pub fn get_stats(&self) -> AllocationStats {
-        self.allocation_stats.lock().unwrap().clone()
+        let stats = self.allocation_stats.lock().unwrap();
+        AllocationStats {
+            total_allocations: stats.total_allocations,
+            total_deallocations: stats.total_deallocations,
+            cache_hits: stats.cache_hits,
+            cache_misses: stats.cache_misses,
+            peak_memory_usage_mb: stats.peak_memory_usage_mb,
+            current_memory_usage_mb: stats.current_memory_usage_mb,
+        }
     }
 
     /// Clear all cached buffers (useful for memory pressure situations)
@@ -200,8 +210,10 @@ impl GpuMemoryPool {
     ) -> Result<CudaSlice<T>> {
         if let Some(stream) = self.transfer_stream.lock().unwrap().as_ref() {
             stream.memcpy_stod(host_data)
+                .map_err(|e| anyhow!("Failed to copy host to device: {}", e))
         } else {
             self.device.default_stream().memcpy_stod(host_data)
+                .map_err(|e| anyhow!("Failed to copy host to device: {}", e))
         }
     }
 
@@ -212,8 +224,10 @@ impl GpuMemoryPool {
     ) -> Result<Vec<T>> {
         if let Some(stream) = self.transfer_stream.lock().unwrap().as_ref() {
             stream.memcpy_dtov(device_buffer)
+                .map_err(|e| anyhow!("Failed to copy device to host: {}", e))
         } else {
             self.device.default_stream().memcpy_dtov(device_buffer)
+                .map_err(|e| anyhow!("Failed to copy device to host: {}", e))
         }
     }
 

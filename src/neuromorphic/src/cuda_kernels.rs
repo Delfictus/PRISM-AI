@@ -104,9 +104,17 @@ extern "C" __global__ void leaky_integration_kernel(
 }
         "#;
 
-        let program = Ptx::from_src(kernel_source);
-        let kernel = device.load_ptx(program, "neuromorphic_kernels", &["leaky_integration_kernel"])?;
-        Ok(Arc::new(kernel.get_func("leaky_integration_kernel")?))
+        // Compile CUDA source to PTX using NVRTC
+        let ptx = cudarc::nvrtc::compile_ptx(kernel_source)
+            .map_err(|e| anyhow::anyhow!("Failed to compile leaky integration kernel: {}", e))?;
+
+        // Load PTX module and get function
+        let module = device.load_module(ptx)
+            .map_err(|e| anyhow::anyhow!("Failed to load PTX module: {}", e))?;
+        let function = module.load_function("leaky_integration_kernel")
+            .map_err(|e| anyhow::anyhow!("Failed to load kernel function: {}", e))?;
+
+        Ok(Arc::new(function))
     }
 
     /// Compile spike encoding kernel for input preprocessing
@@ -144,9 +152,17 @@ extern "C" __global__ void spike_encoding_kernel(
 }
         "#;
 
-        let program = Ptx::from_src(kernel_source);
-        let kernel = device.load_ptx(program, "neuromorphic_kernels", &["spike_encoding_kernel"])?;
-        Ok(Arc::new(kernel.get_func("spike_encoding_kernel")?))
+        // Compile CUDA source to PTX using NVRTC
+        let ptx = cudarc::nvrtc::compile_ptx(kernel_source)
+            .map_err(|e| anyhow::anyhow!("Failed to compile spike encoding kernel: {}", e))?;
+
+        // Load PTX module and get function
+        let module = device.load_module(ptx)
+            .map_err(|e| anyhow::anyhow!("Failed to load PTX module: {}", e))?;
+        let function = module.load_function("spike_encoding_kernel")
+            .map_err(|e| anyhow::anyhow!("Failed to load kernel function: {}", e))?;
+
+        Ok(Arc::new(function))
     }
 
     /// Compile pattern detection kernel for neuromorphic pattern recognition
@@ -195,9 +211,17 @@ extern "C" __global__ void pattern_detection_kernel(
 }
         "#;
 
-        let program = Ptx::from_src(kernel_source);
-        let kernel = device.load_ptx(program, "neuromorphic_kernels", &["pattern_detection_kernel"])?;
-        Ok(Arc::new(kernel.get_func("pattern_detection_kernel")?))
+        // Compile CUDA source to PTX using NVRTC
+        let ptx = cudarc::nvrtc::compile_ptx(kernel_source)
+            .map_err(|e| anyhow::anyhow!("Failed to compile pattern detection kernel: {}", e))?;
+
+        // Load PTX module and get function
+        let module = device.load_module(ptx)
+            .map_err(|e| anyhow::anyhow!("Failed to load PTX module: {}", e))?;
+        let function = module.load_function("pattern_detection_kernel")
+            .map_err(|e| anyhow::anyhow!("Failed to load kernel function: {}", e))?;
+
+        Ok(Arc::new(function))
     }
 
     /// Compile spectral radius computation kernel (power iteration on GPU)
@@ -245,9 +269,17 @@ extern "C" __global__ void spectral_radius_iteration_kernel(
 }
         "#;
 
-        let program = Ptx::from_src(kernel_source);
-        let kernel = device.load_ptx(program, "neuromorphic_kernels", &["spectral_radius_iteration_kernel"])?;
-        Ok(Arc::new(kernel.get_func("spectral_radius_iteration_kernel")?))
+        // Compile CUDA source to PTX using NVRTC
+        let ptx = cudarc::nvrtc::compile_ptx(kernel_source)
+            .map_err(|e| anyhow::anyhow!("Failed to compile spectral radius kernel: {}", e))?;
+
+        // Load PTX module and get function
+        let module = device.load_module(ptx)
+            .map_err(|e| anyhow::anyhow!("Failed to load PTX module: {}", e))?;
+        let function = module.load_function("spectral_radius_iteration_kernel")
+            .map_err(|e| anyhow::anyhow!("Failed to load kernel function: {}", e))?;
+
+        Ok(Arc::new(function))
     }
 
     /// Execute leaky integration kernel - core performance improvement
@@ -281,26 +313,25 @@ extern "C" __global__ void spectral_radius_iteration_kernel(
             .unwrap()
             .as_nanos() as u64;
 
-        // Launch kernel with optimized parameters
-        unsafe {
-            self.device.launch_kernel(
-                &self.leaky_integration_kernel,
-                cfg,
-                (
-                    current_state,      // float* current_state
-                    previous_state,     // const float* previous_state
-                    input_contrib,      // const float* input_contrib
-                    recurrent_contrib,  // const float* recurrent_contrib
-                    leak_rate,          // const float leak_rate
-                    noise_level,        // const float noise_level
-                    n_neurons as u32,   // const unsigned int n_neurons
-                    seed,               // const unsigned long long seed
-                ),
-            )?;
-        }
+        // Launch kernel with optimized parameters using cudarc 0.17 API
+        let stream = self.device.default_stream();
+        let n_neurons_u32 = n_neurons as u32;
+        let mut launch_args = stream.launch_builder(&*self.leaky_integration_kernel);
+        launch_args.arg(current_state);      // float* current_state
+        launch_args.arg(previous_state);     // const float* previous_state
+        launch_args.arg(input_contrib);      // const float* input_contrib
+        launch_args.arg(recurrent_contrib);  // const float* recurrent_contrib
+        launch_args.arg(&leak_rate);         // const float leak_rate
+        launch_args.arg(&noise_level);       // const float noise_level
+        launch_args.arg(&n_neurons_u32);     // const unsigned int n_neurons
+        launch_args.arg(&seed);              // const unsigned long long seed
+
+        unsafe { launch_args.launch(cfg) }
+            .map_err(|e| anyhow::anyhow!("Failed to launch leaky integration kernel: {}", e))?;
 
         // Synchronize to ensure completion
-        self.device.synchronize()?;
+        stream.synchronize()
+            .map_err(|e| anyhow::anyhow!("Failed to synchronize stream: {}", e))?;
 
         Ok(())
     }
@@ -329,28 +360,39 @@ extern "C" __global__ void spectral_radius_iteration_kernel(
         // Calculate normalization factor
         let normalization_factor = if n_spikes > 0 { 1.0f32 / n_spikes as f32 } else { 1.0f32 };
 
-        // Handle optional amplitudes
-        let amplitudes_ptr = spike_amplitudes.map(|a| a as *const CudaSlice<f32>)
-            .unwrap_or(std::ptr::null());
+        // Launch kernel with cudarc 0.17 API
+        let stream = self.device.default_stream();
+        let n_spikes_u32 = n_spikes as u32;
+        let n_bins_u32 = n_bins as u32;
+        let mut launch_args = stream.launch_builder(&*self.spike_encoding_kernel);
+        launch_args.arg(output_vector);       // float* output_vector
+        launch_args.arg(spike_times);         // const float* spike_times
 
-        unsafe {
-            self.device.launch_kernel(
-                &self.spike_encoding_kernel,
-                cfg,
-                (
-                    output_vector,       // float* output_vector
-                    spike_times,         // const float* spike_times
-                    amplitudes_ptr,      // const float* spike_amplitudes (can be null)
-                    spike_neuron_ids,    // const unsigned int* spike_neuron_ids
-                    n_spikes as u32,     // const unsigned int n_spikes
-                    n_bins as u32,       // const unsigned int n_bins
-                    duration_ms,         // const float duration_ms
-                    normalization_factor, // const float normalization_factor
-                ),
-            )?;
+        // Handle optional amplitudes
+        // Note: For None case, we need to pass a dummy buffer since CUDA kernels expect a pointer
+        // The kernel checks the pointer but we'll use a small dummy buffer instead of null
+        let dummy_buffer;
+        if let Some(amplitudes) = spike_amplitudes {
+            launch_args.arg(amplitudes);      // const float* spike_amplitudes
+        } else {
+            // Create a small dummy buffer for null pointer case
+            let stream = self.device.default_stream();
+            dummy_buffer = stream.alloc_zeros::<f32>(1)
+                .map_err(|e| anyhow::anyhow!("Failed to allocate dummy buffer: {}", e))?;
+            launch_args.arg(&dummy_buffer);
         }
 
-        self.device.synchronize()?;
+        launch_args.arg(spike_neuron_ids);    // const unsigned int* spike_neuron_ids
+        launch_args.arg(&n_spikes_u32);       // const unsigned int n_spikes
+        launch_args.arg(&n_bins_u32);         // const unsigned int n_bins
+        launch_args.arg(&duration_ms);        // const float duration_ms
+        launch_args.arg(&normalization_factor); // const float normalization_factor
+
+        unsafe { launch_args.launch(cfg) }
+            .map_err(|e| anyhow::anyhow!("Failed to launch spike encoding kernel: {}", e))?;
+
+        stream.synchronize()
+            .map_err(|e| anyhow::anyhow!("Failed to synchronize stream: {}", e))?;
         Ok(())
     }
 
@@ -371,22 +413,22 @@ extern "C" __global__ void spectral_radius_iteration_kernel(
             shared_mem_bytes: config.block_size * 4, // Shared memory for reduction
         };
 
-        unsafe {
-            self.device.launch_kernel(
-                &self.pattern_detection_kernel,
-                cfg,
-                (
-                    pattern_scores,      // float* pattern_scores
-                    neuron_states,       // const float* neuron_states
-                    pattern_templates,   // const float* pattern_templates
-                    n_neurons as u32,    // const unsigned int n_neurons
-                    n_patterns as u32,   // const unsigned int n_patterns
-                    threshold,           // const float threshold
-                ),
-            )?;
-        }
+        let stream = self.device.default_stream();
+        let n_neurons_u32 = n_neurons as u32;
+        let n_patterns_u32 = n_patterns as u32;
+        let mut launch_args = stream.launch_builder(&*self.pattern_detection_kernel);
+        launch_args.arg(pattern_scores);      // float* pattern_scores
+        launch_args.arg(neuron_states);       // const float* neuron_states
+        launch_args.arg(pattern_templates);   // const float* pattern_templates
+        launch_args.arg(&n_neurons_u32);      // const unsigned int n_neurons
+        launch_args.arg(&n_patterns_u32);     // const unsigned int n_patterns
+        launch_args.arg(&threshold);          // const float threshold
 
-        self.device.synchronize()?;
+        unsafe { launch_args.launch(cfg) }
+            .map_err(|e| anyhow::anyhow!("Failed to launch pattern detection kernel: {}", e))?;
+
+        stream.synchronize()
+            .map_err(|e| anyhow::anyhow!("Failed to synchronize stream: {}", e))?;
         Ok(())
     }
 
@@ -410,23 +452,23 @@ extern "C" __global__ void spectral_radius_iteration_kernel(
         };
 
         // Clear norm result
-        self.device.memset_zeros(norm_result)?;
+        let stream = self.device.default_stream();
+        stream.memset_zeros(norm_result)
+            .map_err(|e| anyhow::anyhow!("Failed to clear norm result: {}", e))?;
 
-        unsafe {
-            self.device.launch_kernel(
-                &self.spectral_radius_kernel,
-                cfg,
-                (
-                    output_vector,       // float* output_vector
-                    input_vector,        // const float* input_vector
-                    matrix,              // const float* matrix
-                    n_dim as u32,        // const unsigned int n_dim
-                    norm_result,         // float* norm_result
-                ),
-            )?;
-        }
+        let n_dim_u32 = n_dim as u32;
+        let mut launch_args = stream.launch_builder(&*self.spectral_radius_kernel);
+        launch_args.arg(output_vector);       // float* output_vector
+        launch_args.arg(input_vector);        // const float* input_vector
+        launch_args.arg(matrix);              // const float* matrix
+        launch_args.arg(&n_dim_u32);          // const unsigned int n_dim
+        launch_args.arg(norm_result);         // float* norm_result
 
-        self.device.synchronize()?;
+        unsafe { launch_args.launch(cfg) }
+            .map_err(|e| anyhow::anyhow!("Failed to launch spectral radius kernel: {}", e))?;
+
+        stream.synchronize()
+            .map_err(|e| anyhow::anyhow!("Failed to synchronize stream: {}", e))?;
         Ok(())
     }
 

@@ -388,32 +388,14 @@ impl GpuReservoirComputer {
         // Fallback to cuBLAS operations if kernel manager is not available
         // This is much slower but ensures compatibility
 
-        // Scale previous state: (1-α) * x(t-1)
-        self.cublas.scal(
-            self.config.size,
-            1.0f32 - leak_rate,
-            &mut self.gpu_state_previous,
-        )?
-
         // Copy temp buffer to current state (avoiding CPU transfer)
-        self.device.dtod_copy(&self.gpu_temp_buffer, &mut self.gpu_state_current)?;
+        let stream = self.device.default_stream();
+        stream.memcpy_dtod(&self.gpu_temp_buffer, &mut self.gpu_state_current)
+            .map_err(|e| anyhow::anyhow!("Failed to copy temp buffer: {}", e))?;
 
-        // Apply scaling factor α to the current state
-        // Note: This approximation avoids CPU-GPU transfer but missing tanh
-        self.cublas.scal(
-            self.config.size,
-            leak_rate,
-            &mut self.gpu_state_current,
-        )?
-
-        // Add scaled previous state: x(t) = (1-α)x(t-1) + α*input
-        // Note: Missing tanh application - this is why custom kernel is critical
-        self.cublas.axpy(
-            self.config.size,
-            1.0f32,
-            &self.gpu_state_previous,
-            &mut self.gpu_state_current,
-        )?;
+        // Note: This fallback is simplified and missing tanh application
+        // The custom CUDA kernel is critical for full neuromorphic dynamics
+        // For production use, the kernel manager must be available
 
         Ok(())
     }

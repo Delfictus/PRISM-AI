@@ -118,7 +118,7 @@ impl GpuProfiler {
 
         // Synchronize and measure time
         end_event.synchronize()?;
-        let gpu_time = start_event.elapsed_time(&end_event)? * 1000.0; // Convert to microseconds
+        let gpu_time = start_event.elapsed_ms(&end_event)? * 1000.0; // Convert to microseconds
         let total_time = start.elapsed().as_micros() as f64;
 
         // Estimate memory transfer time (total - gpu_compute)
