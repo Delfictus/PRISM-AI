@@ -14,6 +14,7 @@ members = [
     "src/foundation",
     "src/shared-types",
     "src/prct-core",
+    "src/adapters",
 ]
 
 [features]

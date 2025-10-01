@@ -1930,6 +1930,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "prct-adapters"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nalgebra",
+ "ndarray",
+ "neuromorphic-engine",
+ "num-complex",
+ "parking_lot",
+ "platform-foundation",
+ "prct-core",
+ "quantum-engine",
+ "shared-types",
+ "tokio",
+]
+
+[[package]]
 name = "prct-core"
 version = "0.1.0"
 dependencies = [
