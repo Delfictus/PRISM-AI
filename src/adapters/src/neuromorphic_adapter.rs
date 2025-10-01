@@ -10,7 +10,6 @@ use neuromorphic_engine::pattern_detector::PatternDetectorConfig;
 
 /// Adapter connecting PRCT domain to neuromorphic engine
 pub struct NeuromorphicAdapter {
-    neuron_count: usize,
     window_ms: f64,
 }
 
@@ -18,9 +17,15 @@ impl NeuromorphicAdapter {
     /// Create new neuromorphic adapter with default configuration
     pub fn new() -> Result<Self> {
         Ok(Self {
-            neuron_count: 1000,
             window_ms: 100.0,
         })
+    }
+
+    /// Calculate optimal neuron count for graph size
+    fn neuron_count_for_graph(&self, graph: &Graph) -> usize {
+        // Scale with graph size: min 10, max 1000
+        // Use 10x vertices as a reasonable scaling factor
+        (graph.num_vertices * 10).clamp(10, 1000)
     }
 }
 
@@ -30,6 +35,8 @@ impl NeuromorphicPort for NeuromorphicAdapter {
         graph: &Graph,
         _params: &NeuromorphicEncodingParams,
     ) -> Result<SpikePattern> {
+        let neuron_count = self.neuron_count_for_graph(graph);
+
         // Convert graph to input data (use vertex degrees as features)
         let features: Vec<f64> = (0..graph.num_vertices)
             .map(|v| {
@@ -43,7 +50,7 @@ impl NeuromorphicPort for NeuromorphicAdapter {
         let input_data = InputData::new("graph_encoding".to_string(), features);
 
         // Create encoder
-        let mut encoder = SpikeEncoder::new(self.neuron_count, self.window_ms)
+        let mut encoder = SpikeEncoder::new(neuron_count, self.window_ms)
             .map_err(|e| PRCTError::NeuromorphicFailed(e.to_string()))?;
 
         // Encode
@@ -62,11 +69,13 @@ impl NeuromorphicPort for NeuromorphicAdapter {
         Ok(SpikePattern {
             spikes,
             duration_ms: self.window_ms,
-            num_neurons: self.neuron_count,
+            num_neurons: neuron_count,
         })
     }
 
     fn process_and_detect_patterns(&self, spikes: &SpikePattern) -> Result<NeuroState> {
+        let neuron_count = spikes.num_neurons;
+
         // Convert to engine format
         let engine_spikes = neuromorphic_engine::SpikePattern::new(
             spikes.spikes.iter().map(|s| neuromorphic_engine::Spike::new(
@@ -76,9 +85,9 @@ impl NeuromorphicPort for NeuromorphicAdapter {
             self.window_ms
         );
 
-        // Create reservoir with correct signature
+        // Create reservoir with correct signature (scaled to spike pattern size)
         let mut reservoir = ReservoirComputer::new(
-            self.neuron_count,  // reservoir_size
+            neuron_count,  // reservoir_size (matches spike pattern)
             spikes.spikes.len().max(10), // input_size
             0.9,   // spectral radius
             0.1,   // connection_prob (sparsity)
@@ -100,7 +109,7 @@ impl NeuromorphicPort for NeuromorphicAdapter {
 
         Ok(NeuroState {
             neuron_states: reservoir_state.activations.clone(),
-            spike_pattern: vec![0; self.neuron_count],
+            spike_pattern: vec![0; neuron_count],
             coherence,
             pattern_strength,
             timestamp_ns: 0,

@@ -47,9 +47,10 @@ fn main() -> anyhow::Result<()> {
     let hamiltonian = quantum.build_hamiltonian(&graph, &qparams)?;
     println!("   ✓ build_hamiltonian: dimension={}", hamiltonian.dimension);
 
-    // Create initial quantum state
+    // Create initial quantum state (dimension = hamiltonian.dimension)
+    let dim = hamiltonian.dimension;
     let initial_state = QuantumState {
-        amplitudes: vec![(1.0 / (n as f64).sqrt(), 0.0); n],
+        amplitudes: vec![(1.0 / (dim as f64).sqrt(), 0.0); dim],
         phase_coherence: 0.9,
         energy: 0.0,
         entanglement: 0.0,

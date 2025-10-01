@@ -71,11 +71,13 @@ impl QuantumPort for QuantumAdapter {
             .map(|c| (c.re, c.im))
             .collect();
 
+        let dimension = n * 3; // 3D space per atom
+
         Ok(HamiltonianState {
             matrix_elements,
-            eigenvalues: vec![0.0; n], // Would compute via eigendecomposition
+            eigenvalues: vec![0.0; dimension], // Would compute via eigendecomposition
             ground_state_energy: -1.0,
-            dimension: n,
+            dimension,
         })
     }
 

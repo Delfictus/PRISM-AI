@@ -150,8 +150,14 @@ impl PhaseResonanceField {
 
         // Initialize resonance parameters based on physical principles
         field.initialize_resonance_parameters(n_atoms);
-        field.generate_chromatic_coloring(n_atoms);
-        field.optimize_tsp_ordering(n_atoms);
+
+        // NOTE: Do NOT call generate_chromatic_coloring here to avoid infinite recursion
+        // (ChromaticColoring creates another PhaseResonanceField)
+        // Use fallback coloring instead
+        field.chromatic_coloring = (0..n_atoms).map(|i| i % 4).collect();
+
+        // Simple TSP ordering (identity permutation)
+        field.tsp_permutation = (0..n_atoms).collect();
 
         field
     }
@@ -550,7 +556,7 @@ pub struct Hamiltonian {
     impropers: Vec<ImproperTerm>,   // Improper dihedral terms
 
     /// Phase resonance field parameters
-    phase_resonance: PhaseResonanceField,  // PRCT phase dynamics
+    phase_resonance: Box<PhaseResonanceField>,  // PRCT phase dynamics (boxed for stack safety)
     resonance_matrix: Array2<Complex64>,   // H_resonance matrix representation
 
     /// Kinetic energy matrix representation
@@ -667,7 +673,7 @@ impl Hamiltonian {
             angles: Vec::new(),         // Will be populated by topology builder
             dihedrals: Vec::new(),      // Will be populated by topology builder
             impropers: Vec::new(),      // Will be populated by topology builder
-            phase_resonance: PhaseResonanceField::new(n_atoms), // Initialize PRCT field
+            phase_resonance: Box::new(PhaseResonanceField::new(n_atoms)), // Initialize PRCT field
             resonance_matrix: Array2::zeros((n_atoms * 3, n_atoms * 3)), // H_resonance
             kinetic_matrix: Array2::zeros((n_atoms * 3, n_atoms * 3)),
             potential_matrix: Array2::zeros((n_atoms * 3, n_atoms * 3)),
