@@ -18,14 +18,14 @@ members = [
 ]
 
 [features]
-default = ["simulation"]
+default = ["cuda"]
 # Real CUDA GPU acceleration (requires NVIDIA drivers + RTX GPU)
 cuda = ["neuromorphic-engine/cuda"]
-# CPU-based simulation with artificial speedup for testing
+# CPU-based simulation (DEPRECATED - only for testing without GPU)
 simulation = ["neuromorphic-engine/simulation"]
 
 [dependencies]
-neuromorphic-engine = { path = "src/neuromorphic", default-features = false, features = ["simulation"] }
+neuromorphic-engine = { path = "src/neuromorphic", default-features = false, features = ["cuda"] }
 quantum-engine = { path = "src/quantum" }
 platform-foundation = { path = "src/foundation" }
 shared-types = { path = "src/shared-types" }

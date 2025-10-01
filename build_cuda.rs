@@ -5,9 +5,13 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    // Watch all CUDA kernel files
     println!("cargo:rerun-if-changed=cuda/graph_coloring.cu");
     println!("cargo:rerun-if-changed=cuda/tsp_solver.cu");
     println!("cargo:rerun-if-changed=cuda/parallel_coloring.cu");
+    println!("cargo:rerun-if-changed=cuda/neuromorphic_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/quantum_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/coupling_kernels.cu");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -97,10 +101,41 @@ fn main() {
     let runtime_ptx_dir = project_root.join("target").join("ptx");
     std::fs::create_dir_all(&runtime_ptx_dir).unwrap();
 
+    // Compile new neuromorphic kernels
+    let kernels = vec![
+        ("neuromorphic_kernels", "cuda/neuromorphic_kernels.cu"),
+        ("quantum_kernels", "cuda/quantum_kernels.cu"),
+        ("coupling_kernels", "cuda/coupling_kernels.cu"),
+    ];
+
+    for (name, file) in &kernels {
+        let ptx_file = out_dir.join(format!("{}.ptx", name));
+
+        let status = Command::new("nvcc")
+            .args(&[
+                "--ptx",
+                "--gpu-architecture=sm_89", // RTX 5070 (Blackwell)
+                "-o",
+                ptx_file.to_str().unwrap(),
+                file,
+                "--use_fast_math",
+                "--generate-line-info",
+            ])
+            .status()
+            .expect(&format!("Failed to execute nvcc for {}", file));
+
+        if !status.success() {
+            panic!("nvcc compilation failed for {}", file);
+        }
+
+        std::fs::copy(&ptx_file, runtime_ptx_dir.join(format!("{}.ptx", name))).unwrap();
+    }
+
     std::fs::copy(&graph_coloring_ptx, runtime_ptx_dir.join("graph_coloring.ptx")).unwrap();
     std::fs::copy(&tsp_solver_ptx, runtime_ptx_dir.join("tsp_solver.ptx")).unwrap();
     std::fs::copy(&parallel_coloring_ptx, runtime_ptx_dir.join("parallel_coloring.ptx")).unwrap();
 
-    println!("cargo:warning=CUDA kernels compiled successfully (graph_coloring.cu + tsp_solver.cu + parallel_coloring.cu)");
-    println!("cargo:warning=PTX files copied to target/ptx/ for runtime access");
+    println!("cargo:warning=ALL CUDA kernels compiled successfully");
+    println!("cargo:warning=Optimization + Neuromorphic + Quantum + Coupling kernels ready");
+    println!("cargo:warning=PTX files copied to target/ptx/ for runtime GPU execution");
 }
