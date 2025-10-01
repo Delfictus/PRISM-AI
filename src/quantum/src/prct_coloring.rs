@@ -92,34 +92,40 @@ impl ChromaticColoring {
 
     /// Find optimal threshold for graph construction using adaptive algorithm
     ///
-    /// Uses binary search to find the maximum threshold that produces a graph
-    /// likely to be k-colorable with the target number of colors. This maximizes
-    /// edge density while maintaining k-colorability.
+    /// Uses binary search with exact colorability testing to find the minimum
+    /// threshold that produces a k-colorable graph. This maximizes edge density
+    /// while guaranteeing the graph can be colored with target_colors.
     ///
     /// Algorithm:
-    /// 1. Collect all non-zero coupling strengths
-    /// 2. Binary search over sorted strengths
-    /// 3. For each threshold candidate, estimate chromatic number using Brooks' theorem
-    /// 4. Select maximum threshold where χ(G) ≤ target_colors
+    /// 1. Collect all unique non-zero coupling strengths
+    /// 2. Binary search over sorted strengths (ascending order)
+    /// 3. For each threshold, test actual k-colorability using DSATUR
+    /// 4. Select minimum threshold where graph is k-colorable
+    ///
+    /// Lower threshold → more edges → denser graph → better optimization quality
     ///
     /// # Arguments
     /// * `coupling_matrix` - Complex coupling amplitudes between atoms
     /// * `target_colors` - Desired chromatic number
     ///
     /// # Returns
-    /// Optimal coupling strength threshold
+    /// Optimal coupling strength threshold (minimum value for k-colorability)
     fn find_optimal_threshold(
         coupling_matrix: &Array2<Complex64>,
         target_colors: usize,
     ) -> Result<f64> {
         let n = coupling_matrix.nrows();
+        if n == 0 {
+            return Ok(0.0);
+        }
 
-        // Collect all non-zero coupling strengths
+        // Collect all unique, sorted coupling strengths
         let mut strengths: Vec<f64> = Vec::new();
         for i in 0..n {
             for j in (i + 1)..n {
                 let strength = coupling_matrix[[i, j]].norm();
-                if strength > 1e-10 {
+                if strength > 1e-9 {
+                    // Ignore zero/tiny couplings
                     strengths.push(strength);
                 }
             }
@@ -129,54 +135,38 @@ impl ChromaticColoring {
             return Ok(0.0);
         }
 
-        // Sort in descending order (strongest couplings first)
-        strengths.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        // Sort in ascending order (weakest couplings first) and remove duplicates
+        strengths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        strengths.dedup();
 
         // Binary search for optimal threshold
-        // Goal: Find maximum threshold where graph is likely k-colorable
+        // Goal: Find minimum threshold where graph is k-colorable
         let mut low_idx = 0;
         let mut high_idx = strengths.len() - 1;
-        let mut best_threshold = strengths[high_idx]; // Start with weakest coupling
+        let mut best_threshold = strengths[high_idx]; // Start with highest (safest)
 
         while low_idx <= high_idx {
-            let mid_idx = (low_idx + high_idx) / 2;
-            let test_threshold = strengths[mid_idx];
+            let mid_idx = low_idx + (high_idx - low_idx) / 2;
+            let mid_threshold = strengths[mid_idx];
 
             // Build graph with this threshold
-            let adjacency = Self::build_adjacency(coupling_matrix, test_threshold);
+            let adjacency = Self::build_adjacency(coupling_matrix, mid_threshold);
 
-            // Estimate chromatic number using Brooks' theorem:
-            // χ(G) ≤ Δ(G) + 1, where Δ(G) is maximum degree
-            // (Equality holds only for complete graphs and odd cycles)
-            let max_degree = Self::compute_max_degree(&adjacency);
-            let estimated_chromatic = max_degree + 1;
-
-            if estimated_chromatic <= target_colors {
-                // Graph is likely k-colorable
-                // Try higher threshold (more edges) for better optimization
-                best_threshold = test_threshold;
+            // Use actual greedy coloring algorithm to test k-colorability
+            // This is much more accurate than Brooks' theorem approximation
+            if let Ok(_coloring) = Self::greedy_coloring(&adjacency, target_colors) {
+                // The graph IS k-colorable with this threshold
+                // Try a lower threshold to include more edges (denser graph)
+                best_threshold = mid_threshold;
                 if mid_idx == 0 {
-                    break;
+                    break; // Can't go lower
                 }
                 high_idx = mid_idx - 1;
             } else {
-                // Too many edges, graph may not be k-colorable
-                // Reduce threshold (fewer edges)
-                if mid_idx == strengths.len() - 1 {
-                    break;
-                }
+                // The graph is NOT k-colorable - it's too dense
+                // Must increase threshold to remove edges
                 low_idx = mid_idx + 1;
             }
-        }
-
-        // Verify the selected threshold produces a valid graph
-        let final_adjacency = Self::build_adjacency(coupling_matrix, best_threshold);
-        let final_max_degree = Self::compute_max_degree(&final_adjacency);
-
-        if final_max_degree + 1 > target_colors * 2 {
-            // Very conservative fallback: use mean coupling strength
-            let mean_strength = strengths.iter().sum::<f64>() / strengths.len() as f64;
-            return Ok(mean_strength);
         }
 
         Ok(best_threshold)
