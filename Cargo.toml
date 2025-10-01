@@ -13,8 +13,15 @@ members = [
     "src/foundation",
 ]
 
+[features]
+default = ["simulation"]
+# Real CUDA GPU acceleration (requires NVIDIA drivers + RTX GPU)
+cuda = ["neuromorphic-engine/cuda"]
+# CPU-based simulation with artificial speedup for testing
+simulation = ["neuromorphic-engine/simulation"]
+
 [dependencies]
-neuromorphic-engine = { path = "src/neuromorphic" }
+neuromorphic-engine = { path = "src/neuromorphic", default-features = false, features = ["simulation"] }
 quantum-engine = { path = "src/quantum" }
 platform-foundation = { path = "src/foundation" }
 
@@ -53,6 +60,14 @@ path = "examples/performance_optimization_demo.rs"
 [[example]]
 name = "rtx5070_validation_demo"
 path = "examples/rtx5070_validation_demo.rs"
+
+[[example]]
+name = "test_gpu_detection"
+path = "examples/test_gpu_detection.rs"
+
+[[example]]
+name = "stdp_learning_demo"
+path = "examples/stdp_learning_demo.rs"
 
 [lib]
 name = "neuromorphic_quantum_platform"

@@ -190,6 +190,7 @@ pub fn create_gpu_reservoir(reservoir_size: usize) -> Result<GpuReservoirCompute
         input_scaling: 1.0,
         noise_level: 0.01,
         enable_plasticity: false,
+        ..Default::default()
     };
 
     GpuReservoirComputer::new(config)

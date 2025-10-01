@@ -218,6 +218,9 @@ async fn test_gpu_performance(
             spectral_radius: 0.95,
             connection_prob: 0.1,
             leak_rate: 0.3,
+            input_scaling: 1.0,
+            noise_level: 0.01,
+            enable_plasticity: false,
         };
 
         let gpu_config = neuromorphic_engine::gpu_reservoir::GpuConfig::default();
@@ -229,7 +232,7 @@ async fn test_gpu_performance(
 
         for i in 0..iterations {
             let pattern = &test_patterns[i % test_patterns.len()];
-            let _result = gpu_reservoir.process(pattern)?;
+            let _result = gpu_reservoir.process_gpu(pattern)?;
 
             if (i + 1) % 10 == 0 {
                 print!(".");
@@ -241,7 +244,7 @@ async fn test_gpu_performance(
         println!();
 
         // Print REAL GPU statistics
-        let gpu_stats = gpu_reservoir.get_stats();
+        let gpu_stats = gpu_reservoir.get_gpu_stats();
         println!("  📊 REAL GPU Statistics:");
         println!("    • Total GPU operations: {}", gpu_stats.total_gpu_operations);
         println!("    • GPU memory usage: {:.1}MB", gpu_stats.gpu_memory_usage_mb);
@@ -343,6 +346,9 @@ async fn test_scalability(test_patterns: &[SpikePattern]) -> Result<()> {
                 spectral_radius: 0.95,
                 connection_prob: 0.1,
                 leak_rate: 0.3,
+                input_scaling: 1.0,
+                noise_level: 0.01,
+                enable_plasticity: false,
             };
             let gpu_config = neuromorphic_engine::gpu_reservoir::GpuConfig::default();
 
@@ -350,7 +356,7 @@ async fn test_scalability(test_patterns: &[SpikePattern]) -> Result<()> {
                 Ok(mut gpu_reservoir) => {
                     let gpu_start = Instant::now();
                     for pattern in &test_patterns[0..5] {
-                        let _ = gpu_reservoir.process(pattern);
+                        let _ = gpu_reservoir.process_gpu(pattern);
                     }
                     Some(gpu_start.elapsed())
                 },

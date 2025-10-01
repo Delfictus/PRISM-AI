@@ -3,6 +3,7 @@
 //! LIQUID STATE MACHINE WITH FULL MATHEMATICAL SOPHISTICATION
 
 use crate::types::{SpikePattern, Spike, PatternMetadata};
+use crate::stdp_profiles::{STDPProfile, STDPConfig, LearningStats};
 use nalgebra::{DMatrix, DVector};
 use anyhow::Result;
 use rand::Rng;
@@ -18,6 +19,9 @@ pub struct ReservoirComputer {
     state: DVector<f64>,
     previous_state: DVector<f64>,
     statistics: ReservoirStatistics,
+    stdp_config: Option<STDPConfig>,
+    weight_update_count: usize,
+    mean_activity_history: Vec<f64>,
 }
 
 /// Configuration for the reservoir computer
@@ -40,6 +44,8 @@ pub struct ReservoirConfig {
     pub noise_level: f64,
     /// Enable plasticity (STDP-like learning)
     pub enable_plasticity: bool,
+    /// STDP learning profile (only used if enable_plasticity = true)
+    pub stdp_profile: STDPProfile,
 }
 
 impl Default for ReservoirConfig {
@@ -53,6 +59,7 @@ impl Default for ReservoirConfig {
             input_scaling: 1.0,            // Unity input scaling
             noise_level: 0.01,             // Small amount of noise for robustness
             enable_plasticity: false,      // Plasticity disabled by default
+            stdp_profile: STDPProfile::Balanced,  // Balanced learning profile
         }
     }
 }
@@ -156,6 +163,13 @@ impl ReservoirComputer {
         let state = DVector::zeros(config.size);
         let previous_state = DVector::zeros(config.size);
 
+        // Initialize STDP configuration if plasticity is enabled
+        let stdp_config = if config.enable_plasticity {
+            Some(config.stdp_profile.get_config())
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             weights_input,
@@ -164,6 +178,9 @@ impl ReservoirComputer {
             state,
             previous_state,
             statistics: ReservoirStatistics::default(),
+            stdp_config,
+            weight_update_count: 0,
+            mean_activity_history: Vec::with_capacity(1000),
         })
     }
 
@@ -199,6 +216,8 @@ impl ReservoirComputer {
         self.state.fill(0.0);
         self.previous_state.fill(0.0);
         self.statistics = ReservoirStatistics::default();
+        self.weight_update_count = 0;
+        self.mean_activity_history.clear();
     }
 
     /// Get comprehensive reservoir statistics
@@ -209,6 +228,138 @@ impl ReservoirComputer {
     /// Get current reservoir configuration
     pub fn get_config(&self) -> &ReservoirConfig {
         &self.config
+    }
+
+    /// Get STDP learning statistics
+    /// Returns comprehensive metrics about weight adaptation and learning progress
+    pub fn get_learning_stats(&self) -> LearningStats {
+        if !self.config.enable_plasticity {
+            return LearningStats::default();
+        }
+
+        let stdp = match &self.stdp_config {
+            Some(config) => config,
+            None => return LearningStats::default(),
+        };
+
+        // Collect all reservoir weights
+        let weights_flat: Vec<f64> = self
+            .weights_reservoir
+            .iter()
+            .filter(|&&w| w != 0.0)
+            .copied()
+            .collect();
+
+        if weights_flat.is_empty() {
+            return LearningStats::default();
+        }
+
+        // Calculate statistics
+        let mean_weight = weights_flat.iter().sum::<f64>() / weights_flat.len() as f64;
+        let variance = weights_flat
+            .iter()
+            .map(|w| (w - mean_weight).powi(2))
+            .sum::<f64>()
+            / weights_flat.len() as f64;
+
+        let max_weight = weights_flat
+            .iter()
+            .fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+        let min_weight = weights_flat.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+
+        // Count saturated weights
+        let saturated_count = weights_flat
+            .iter()
+            .filter(|&&w| {
+                w >= stdp.max_weight * 0.95 || w <= stdp.min_weight * 1.05
+            })
+            .count();
+
+        let saturation_percentage =
+            (saturated_count as f64 / weights_flat.len() as f64) * 100.0;
+
+        // Calculate weight entropy (diversity measure)
+        let weight_entropy = self.calculate_weight_entropy(&weights_flat);
+
+        // Calculate mean activity
+        let mean_activity = if self.mean_activity_history.is_empty() {
+            0.0
+        } else {
+            self.mean_activity_history.iter().sum::<f64>()
+                / self.mean_activity_history.len() as f64
+        };
+
+        LearningStats {
+            mean_weight,
+            weight_variance: variance,
+            max_weight,
+            min_weight,
+            saturation_percentage,
+            total_updates: self.weight_update_count,
+            learning_rate: stdp.learning_rate,
+            mean_activity,
+            weight_entropy,
+        }
+    }
+
+    /// Calculate weight entropy (measure of weight distribution diversity)
+    fn calculate_weight_entropy(&self, weights: &[f64]) -> f64 {
+        if weights.is_empty() {
+            return 0.0;
+        }
+
+        // Create histogram bins
+        let num_bins = 20;
+        let min = weights.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+        let max = weights.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+        let range = max - min;
+
+        if range < 1e-10 {
+            return 0.0;
+        }
+
+        let mut bins = vec![0usize; num_bins];
+        for &weight in weights {
+            let bin_index = (((weight - min) / range) * (num_bins - 1) as f64) as usize;
+            bins[bin_index.min(num_bins - 1)] += 1;
+        }
+
+        // Calculate entropy: H = -Σ(p_i * log2(p_i))
+        let total = weights.len() as f64;
+        let entropy: f64 = bins
+            .iter()
+            .filter(|&&count| count > 0)
+            .map(|&count| {
+                let p = count as f64 / total;
+                -p * p.log2()
+            })
+            .sum();
+
+        entropy
+    }
+
+    /// Check if learning has converged
+    pub fn has_learning_converged(&self, window_size: usize, threshold: f64) -> bool {
+        if self.mean_activity_history.len() < window_size {
+            return false;
+        }
+
+        let recent: Vec<f64> = self
+            .mean_activity_history
+            .iter()
+            .rev()
+            .take(window_size)
+            .copied()
+            .collect();
+
+        let mean = recent.iter().sum::<f64>() / recent.len() as f64;
+        let variance = recent
+            .iter()
+            .map(|w| (w - mean).powi(2))
+            .sum::<f64>()
+            / recent.len() as f64;
+
+        variance < threshold
     }
 
     /// Generate sparse random input weight matrix
@@ -401,9 +552,21 @@ impl ReservoirComputer {
     }
 
     /// Apply spike-timing dependent plasticity (STDP)
-    /// COMPLETE BIOLOGICAL LEARNING MECHANISM
+    /// COMPLETE BIOLOGICAL LEARNING MECHANISM WITH PROFILE SUPPORT
     fn apply_plasticity(&mut self, _input: &DVector<f64>) {
-        let learning_rate = 0.001; // Conservative learning rate
+        let stdp = match &self.stdp_config {
+            Some(config) => config.clone(),
+            None => return, // Plasticity not enabled
+        };
+
+        self.weight_update_count += 1;
+
+        // Calculate mean activity for homeostasis
+        let mean_activity = self.state.mean();
+        self.mean_activity_history.push(mean_activity);
+        if self.mean_activity_history.len() > 1000 {
+            self.mean_activity_history.remove(0);
+        }
 
         // Update recurrent weights based on pre/post-synaptic correlation
         for i in 0..self.config.size {
@@ -411,10 +574,40 @@ impl ReservoirComputer {
                 if i != j && self.weights_reservoir[(i, j)] != 0.0 {
                     // Hebbian plasticity: Δw = η * pre * post
                     let correlation = self.state[i] * self.previous_state[j];
-                    self.weights_reservoir[(i, j)] += learning_rate * correlation;
+                    let mut weight_change = stdp.learning_rate * correlation;
+
+                    // Apply weight decay
+                    weight_change -= stdp.weight_decay * self.weights_reservoir[(i, j)];
+
+                    // Homeostatic regulation
+                    if stdp.enable_homeostasis {
+                        let activity_error = mean_activity - stdp.target_activity;
+                        weight_change -= 0.0001 * activity_error * self.weights_reservoir[(i, j)];
+                    }
+
+                    self.weights_reservoir[(i, j)] += weight_change;
 
                     // Apply weight bounds (synaptic saturation)
-                    self.weights_reservoir[(i, j)] = self.weights_reservoir[(i, j)].clamp(-2.0, 2.0);
+                    self.weights_reservoir[(i, j)] =
+                        self.weights_reservoir[(i, j)].clamp(stdp.min_weight, stdp.max_weight);
+                }
+            }
+        }
+
+        // Heterosynaptic plasticity (competition between synapses)
+        if stdp.enable_heterosynaptic {
+            let row_sums: Vec<f64> = (0..self.config.size)
+                .map(|i| self.weights_reservoir.row(i).iter().map(|&w| w.abs()).sum())
+                .collect();
+
+            for i in 0..self.config.size {
+                if row_sums[i] > 0.0 {
+                    let norm_factor = self.config.size as f64 / row_sums[i];
+                    for j in 0..self.config.size {
+                        if i != j {
+                            self.weights_reservoir[(i, j)] *= norm_factor.min(1.2);
+                        }
+                    }
                 }
             }
         }

@@ -25,6 +25,7 @@ pub mod types;
 pub mod spike_encoder;
 pub mod reservoir;
 pub mod pattern_detector;
+pub mod stdp_profiles;
 
 // GPU acceleration modules - RTX 5070 with CUDA 12.0 support
 // Only compiled when 'cuda' feature is enabled
@@ -47,6 +48,7 @@ pub use types::*;
 pub use spike_encoder::{SpikeEncoder, EncodingParameters};
 pub use reservoir::ReservoirComputer;
 pub use pattern_detector::PatternDetector;
+pub use stdp_profiles::{STDPProfile, STDPConfig, LearningStats};
 
 // GPU acceleration exports for RTX 5070
 // Only available when 'cuda' feature is enabled
