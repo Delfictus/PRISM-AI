@@ -28,6 +28,9 @@ simulation = ["neuromorphic-engine/simulation"]
 neuromorphic-engine = { path = "src/neuromorphic", default-features = false, features = ["simulation"] }
 quantum-engine = { path = "src/quantum" }
 platform-foundation = { path = "src/foundation" }
+shared-types = { path = "src/shared-types" }
+prct-core = { path = "src/prct-core" }
+prct-adapters = { path = "src/adapters" }
 
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
