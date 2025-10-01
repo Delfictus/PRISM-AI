@@ -139,6 +139,10 @@ path = "examples/full_platform_benchmark.rs"
 name = "full_platform_coloring_benchmark"
 path = "examples/full_platform_coloring_benchmark.rs"
 
+[[example]]
+name = "comprehensive_benchmark"
+path = "examples/comprehensive_benchmark.rs"
+
 [lib]
 name = "neuromorphic_quantum_platform"
 path = "src/lib.rs"
