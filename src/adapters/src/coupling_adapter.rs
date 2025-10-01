@@ -108,12 +108,19 @@ impl PhysicsCouplingPort for CouplingAdapter {
         target: &[f64],
         _lag: f64,
     ) -> Result<TransferEntropy> {
-        if source.len() != target.len() {
-            return Err(PRCTError::CouplingFailed("Source and target length mismatch".into()));
+        // Use minimum length to handle different-sized arrays
+        let n = source.len().min(target.len());
+
+        if n < 2 {
+            // Not enough data for transfer entropy
+            return Ok(TransferEntropy {
+                entropy_bits: 0.0,
+                confidence: 0.0,
+                lag_ms: 10.0,
+            });
         }
 
         // Simplified transfer entropy calculation
-        let n = source.len();
         let mut te = 0.0;
 
         for i in 1..n {

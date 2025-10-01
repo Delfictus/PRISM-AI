@@ -110,8 +110,10 @@ impl PRCTAlgorithm {
         let hamiltonian = self.quantum_port.build_hamiltonian(graph, &self.config.quantum_params)
             .map_err(|e| PRCTError::QuantumFailed(format!("Hamiltonian construction failed: {}", e)))?;
 
+        // Create initial quantum state with correct dimension
+        let dim = hamiltonian.dimension;
         let initial_state = QuantumState {
-            amplitudes: vec![(1.0, 0.0); graph.num_vertices],
+            amplitudes: vec![(1.0 / (dim as f64).sqrt(), 0.0); dim],
             phase_coherence: 0.0,
             energy: 0.0,
             entanglement: 0.0,

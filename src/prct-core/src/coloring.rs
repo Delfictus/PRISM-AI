@@ -30,8 +30,11 @@ pub fn phase_guided_coloring(
     let adjacency = build_adjacency_matrix(graph);
 
     // Order vertices by Kuramoto phase (synchronized vertices colored together)
+    // NOTE: Kuramoto state may have more phases than vertices (includes neuro+quantum),
+    // so we only take the first n phases corresponding to graph vertices
     let mut vertices_by_phase: Vec<(usize, f64)> = kuramoto_state.phases
         .iter()
+        .take(n)  // Only use first n phases for n vertices
         .enumerate()
         .map(|(i, &phase)| (i, phase))
         .collect();
