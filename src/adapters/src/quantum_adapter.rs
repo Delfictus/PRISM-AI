@@ -35,17 +35,11 @@ impl QuantumAdapter {
             if dim == 0 { i as f64 } else { 0.0 }
         });
 
-        // Create masses (unit mass)
+        // Create masses (unit mass in amu)
         let masses = Array1::from_elem(n, 1.0);
 
-        // Force field parameters
-        let force_field = ForceFieldParams {
-            bond_k: 100.0,
-            angle_k: 50.0,
-            dihedral_v: 10.0,
-            epsilon: 0.5,
-            sigma: 3.0,
-        };
+        // Force field parameters using real CHARMM-like params
+        let force_field = ForceFieldParams::new();
 
         Hamiltonian::new(positions, masses, force_field)
             .map_err(|e| PRCTError::QuantumFailed(format!("Hamiltonian construction failed: {:?}", e)))
@@ -91,8 +85,8 @@ impl QuantumPort for QuantumAdapter {
         initial_state: &QuantumState,
         evolution_time: f64,
     ) -> Result<QuantumState> {
-        let hamiltonian_guard = self.hamiltonian.lock();
-        let hamiltonian = hamiltonian_guard.as_ref()
+        let mut hamiltonian_guard = self.hamiltonian.lock();
+        let hamiltonian = hamiltonian_guard.as_mut()
             .ok_or_else(|| PRCTError::QuantumFailed("Hamiltonian not initialized".into()))?;
 
         // Convert shared-types QuantumState to engine Array1<Complex64>
@@ -154,14 +148,12 @@ impl QuantumPort for QuantumAdapter {
     }
 
     fn compute_ground_state(&self, _hamiltonian: &HamiltonianState) -> Result<QuantumState> {
-        let hamiltonian_guard = self.hamiltonian.lock();
-        let hamiltonian = hamiltonian_guard.as_ref()
+        let mut hamiltonian_guard = self.hamiltonian.lock();
+        let hamiltonian = hamiltonian_guard.as_mut()
             .ok_or_else(|| PRCTError::QuantumFailed("Hamiltonian not initialized".into()))?;
 
         // Use quantum engine's ground state calculation
-        let ground_state = quantum_engine::calculate_ground_state(
-            &mut hamiltonian.clone()
-        );
+        let ground_state = quantum_engine::calculate_ground_state(hamiltonian);
 
         let phase_coherence = hamiltonian.phase_coherence();
         let energy = hamiltonian.total_energy(&ground_state);

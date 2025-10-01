@@ -68,7 +68,6 @@ impl PhysicsCouplingPort for CouplingAdapter {
     ) -> Result<KuramotoState> {
         // Build coupling matrix between neuromorphic and quantum oscillators
         let n = neuro_phases.len().max(quantum_phases.len());
-        let mut coupling_matrix = DMatrix::from_element(n, n, Complex64::new(0.5, 0.0));
 
         // Simple Kuramoto update (can be enhanced with full PhysicsCoupling later)
         let mut phases = neuro_phases.to_vec();
@@ -78,8 +77,7 @@ impl PhysicsCouplingPort for CouplingAdapter {
         let coupling_strength = 0.5;
 
         // Kuramoto step
-        let mut new_phases = phases.clone();
-        for i in 0..n {
+        let new_phases: Vec<f64> = (0..n).map(|i| {
             let mut coupling_sum = 0.0;
             for j in 0..n {
                 if i != j {
@@ -87,8 +85,8 @@ impl PhysicsCouplingPort for CouplingAdapter {
                 }
             }
             let dphase = natural_frequencies[i] + (coupling_strength / n as f64) * coupling_sum;
-            new_phases[i] = (phases[i] + dphase * dt) % (2.0 * core::f64::consts::PI);
-        }
+            (phases[i] + dphase * dt) % (2.0 * core::f64::consts::PI)
+        }).collect();
 
         // Compute order parameter
         let sum_real: f64 = new_phases.iter().map(|p| p.cos()).sum();
@@ -96,7 +94,7 @@ impl PhysicsCouplingPort for CouplingAdapter {
         let order_parameter = ((sum_real / n as f64).powi(2) + (sum_imag / n as f64).powi(2)).sqrt();
 
         Ok(KuramotoState {
-            phases: new_phases,
+            phases: new_phases.clone(),
             natural_frequencies,
             coupling_matrix: vec![0.5; n * n],
             order_parameter,
