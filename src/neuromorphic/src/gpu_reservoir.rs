@@ -5,6 +5,7 @@
 
 use crate::types::SpikePattern;
 use crate::reservoir::{ReservoirConfig, ReservoirState, DynamicsMetrics};
+use crate::stdp_profiles::STDPProfile;
 use cudarc::driver::*;
 use cudarc::cublas::{CudaBlas, Gemv, GemvConfig};
 use cudarc::cublas::sys::cublasOperation_t;
@@ -506,6 +507,7 @@ pub fn create_gpu_reservoir(reservoir_size: usize) -> Result<GpuReservoirCompute
         input_scaling: 1.0,
         noise_level: 0.01,
         enable_plasticity: false,
+        stdp_profile: STDPProfile::default(),
     };
 
     let gpu_config = GpuConfig::default();

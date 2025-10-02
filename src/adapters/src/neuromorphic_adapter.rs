@@ -230,7 +230,14 @@ impl NeuromorphicPort for NeuromorphicAdapter {
         })
     }
 
-    /// GPU-accelerated reservoir processing
+    fn get_detected_patterns(&self) -> Result<Vec<DetectedPattern>> {
+        // Simplified for now
+        Ok(vec![])
+    }
+}
+
+impl NeuromorphicAdapter {
+    /// GPU-accelerated reservoir processing (private helper)
     fn process_reservoir_gpu(
         &self,
         spikes: &SpikePattern,
@@ -328,11 +335,6 @@ impl NeuromorphicPort for NeuromorphicAdapter {
             pattern_strength,
             timestamp_ns: 0,
         })
-    }
-
-    fn get_detected_patterns(&self) -> Result<Vec<DetectedPattern>> {
-        // Simplified for now
-        Ok(vec![])
     }
 }
 

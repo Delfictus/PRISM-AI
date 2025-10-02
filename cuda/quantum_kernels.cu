@@ -218,7 +218,7 @@ __global__ void compute_order_parameter(
     if (tid == 0) {
         double sum_cos = shared_cos[0] / n;
         double sum_sin = shared_sin[0] / n;
-        atomicAdd(order_param, sqrt(sum_cos*sum_cos + sum_sin*sin_sin));
+        atomicAdd(order_param, sqrt(sum_cos*sum_cos + sum_sin*sum_sin));
     }
 }
 
