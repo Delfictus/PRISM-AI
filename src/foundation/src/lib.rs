@@ -8,6 +8,8 @@ pub mod ingestion;
 pub mod adapters;
 pub mod coupling_physics;
 pub mod adaptive_coupling;
+pub mod adp;
+pub mod phase_causal_matrix;
 
 // Re-export main components
 pub use platform::NeuromorphicQuantumPlatform;
@@ -26,3 +28,8 @@ pub use coupling_physics::{
 pub use adaptive_coupling::{
     AdaptiveCoupling, AdaptiveParameter, PerformanceMetrics, CouplingValues, PerformanceSummary,
 };
+pub use adp::{
+    ReinforcementLearner, RlConfig, RlStats, State, Action,
+    AdaptiveDecisionProcessor, Decision, AdpStats,
+};
+pub use phase_causal_matrix::{PhaseCausalMatrixProcessor, PcmConfig};
