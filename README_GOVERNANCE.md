@@ -85,7 +85,7 @@ cat PROJECT_DASHBOARD.md
 
 ### What's Blocked
 - ❌ Direct constitution edits
-- ❌ Pseudoscience terms (see forbidden list in constitution)
+- ❌ Forbidden terminology (see constitution forbidden list)
 - ❌ Skipping validation gates
 - ❌ CPU fallback code
 
