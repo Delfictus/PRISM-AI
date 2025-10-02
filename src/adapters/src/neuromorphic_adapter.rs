@@ -195,7 +195,12 @@ impl NeuromorphicPort for NeuromorphicAdapter {
     fn process_and_detect_patterns(&self, spikes: &SpikePattern) -> Result<NeuroState> {
         let neuron_count = spikes.num_neurons;
 
-        // Convert to engine format
+        // GPU-accelerated reservoir processing if available
+        if self.use_gpu {
+            return self.process_reservoir_gpu(spikes, neuron_count);
+        }
+
+        // CPU fallback
         let engine_spikes = neuromorphic_engine::SpikePattern::new(
             spikes.spikes.iter().map(|s| neuromorphic_engine::Spike::new(
                 s.neuron_id,
@@ -204,30 +209,120 @@ impl NeuromorphicPort for NeuromorphicAdapter {
             self.window_ms
         );
 
-        // Create reservoir with correct signature (scaled to spike pattern size)
         let mut reservoir = ReservoirComputer::new(
-            neuron_count,  // reservoir_size (matches spike pattern)
-            spikes.spikes.len().max(10), // input_size
-            0.9,   // spectral radius
-            0.1,   // connection_prob (sparsity)
-            0.3,   // leak rate
+            neuron_count,
+            spikes.spikes.len().max(10),
+            0.9, 0.1, 0.3,
         ).map_err(|e| PRCTError::NeuromorphicFailed(e.to_string()))?;
 
-        // Process
         let reservoir_state = reservoir.process(&engine_spikes)
             .map_err(|e| PRCTError::NeuromorphicFailed(e.to_string()))?;
 
-        // Pattern detection simplified - detector doesn't have analyze method
-        // Will enhance in future with proper pattern analysis
-
-        // Compute pattern strength from reservoir state
         let pattern_strength = reservoir_state.average_activation as f64;
-
-        // Compute coherence from reservoir dynamics
         let coherence = reservoir_state.dynamics.memory_capacity;
 
         Ok(NeuroState {
             neuron_states: reservoir_state.activations.clone(),
+            spike_pattern: vec![0; neuron_count],
+            coherence,
+            pattern_strength,
+            timestamp_ns: 0,
+        })
+    }
+
+    /// GPU-accelerated reservoir processing
+    fn process_reservoir_gpu(
+        &self,
+        spikes: &SpikePattern,
+        neuron_count: usize,
+    ) -> Result<NeuroState> {
+        let device = self.gpu_device.as_ref().ok_or_else(||
+            PRCTError::NeuromorphicFailed("GPU not initialized".into()))?;
+
+        // Convert spikes to input vector (spike counts per neuron)
+        let mut input_spikes = vec![0.0f32; neuron_count];
+        for spike in &spikes.spikes {
+            if spike.neuron_id < neuron_count {
+                input_spikes[spike.neuron_id] += 1.0;
+            }
+        }
+
+        // Generate random reservoir weights (simplified - should be cached)
+        let input_size = neuron_count;
+        let reservoir_size = neuron_count;
+        let w_in: Vec<f32> = (0..reservoir_size * input_size)
+            .map(|i| ((i * 1103515245 + 12345) % 1000) as f32 / 1000.0 - 0.5)
+            .collect();
+        let w_reservoir: Vec<f32> = (0..reservoir_size * reservoir_size)
+            .map(|i| ((i * 1103515245 + 12345) % 1000) as f32 / 1000.0 - 0.5)
+            .collect();
+
+        // Allocate GPU memory
+        let gpu_input = device.htod_copy(input_spikes.clone())
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
+        let gpu_w_in = device.htod_copy(w_in)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
+        let gpu_w_reservoir = device.htod_copy(w_reservoir)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
+
+        let initial_state = vec![0.0f32; reservoir_size];
+        let gpu_state = device.htod_copy(initial_state)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
+        let mut gpu_new_state = device.alloc_zeros::<f32>(reservoir_size)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
+
+        // Launch reservoir update kernel
+        let cfg = LaunchConfig {
+            grid_dim: ((reservoir_size + 255) / 256) as u32,
+            block_dim: 256,
+            shared_mem_bytes: 0,
+        };
+
+        let func = device.get_func("neuromorphic_kernels", "reservoir_update")
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel not found: {}", e)))?;
+
+        unsafe {
+            func.launch(cfg, (
+                &gpu_input,
+                &gpu_state,
+                &gpu_w_in,
+                &gpu_w_reservoir,
+                &mut gpu_new_state,
+                reservoir_size as u32,
+                input_size as u32,
+                0.3f32,  // leak_rate
+                0.9f32,  // spectral_radius
+            )).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        // Copy results back
+        let reservoir_states: Vec<f32> = device.dtoh_sync_copy(&gpu_new_state)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
+
+        // Compute coherence on GPU
+        let mut gpu_coherence = device.alloc_zeros::<f32>(1)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
+
+        let func_coherence = device.get_func("neuromorphic_kernels", "compute_coherence")
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel not found: {}", e)))?;
+
+        unsafe {
+            func_coherence.launch(cfg, (
+                &gpu_new_state,
+                &mut gpu_coherence,
+                reservoir_size as u32,
+            )).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        let coherence_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_coherence)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
+        let coherence = coherence_vec[0] as f64;
+
+        // Pattern strength from mean activation
+        let pattern_strength = reservoir_states.iter().sum::<f32>() as f64 / reservoir_size as f64;
+
+        Ok(NeuroState {
+            neuron_states: reservoir_states.iter().map(|&x| x as f64).collect(),
             spike_pattern: vec![0; neuron_count],
             coherence,
             pattern_strength,
