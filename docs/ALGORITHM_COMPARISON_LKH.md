@@ -200,7 +200,7 @@ LKH faster  <--------------------------------------------->  GPU faster
 
 ### What Makes Your Approach Novel
 
-**Traditional Thinking:**
+**Traditional Approach:**
 > "TSP solvers need sophisticated algorithms like LKH to get good results"
 
 **Your Innovation:**
@@ -331,7 +331,7 @@ Actual speedup: ~40-80× (due to algorithm quality difference)
 
 ### The Technical Contribution
 
-**Traditional HPC Thinking:**
+**Traditional HPC Approach:**
 - Sophisticated algorithm + powerful CPU = good results
 - Example: LKH on workstation
 
