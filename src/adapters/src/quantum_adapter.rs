@@ -9,7 +9,7 @@ use shared_types::*;
 use quantum_engine::{Hamiltonian, ForceFieldParams, PhaseResonanceField};
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
-use cudarc::driver::{CudaContext, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaSlice, LaunchConfig, CudaFunction, CudaModule, PushKernelArg};
 use std::sync::Arc;
 use parking_lot::Mutex;
 
@@ -18,6 +18,7 @@ pub struct QuantumAdapter {
     hamiltonian: Arc<Mutex<Option<Hamiltonian>>>,
     phase_field: Arc<Mutex<Option<PhaseResonanceField>>>,
     gpu_device: Option<Arc<CudaContext>>,
+    gpu_module: Option<Arc<CudaModule>>,
     use_gpu: bool,
 }
 
@@ -25,14 +26,24 @@ impl QuantumAdapter {
     /// Create new GPU-accelerated quantum adapter
     pub fn new() -> Self {
         // Try to initialize GPU
-        let (gpu_device, use_gpu) = match CudaContext::new(0) {
-            Ok(device) => {
-                println!("✓ Quantum GPU initialized (CUDA device 0)");
-                (Some(Arc::new(device)), true)
+        let (gpu_device, gpu_module, use_gpu) = match CudaContext::new(0) {
+            Ok(device_arc) => {
+                // cudarc 0.17 returns Arc<CudaContext> directly
+                // Try to load GPU kernels
+                match Self::load_gpu_module(&device_arc) {
+                    Ok(module) => {
+                        println!("✓ Quantum GPU initialized (CUDA device 0)");
+                        (Some(device_arc), Some(module), true)
+                    }
+                    Err(e) => {
+                        eprintln!("⚠ GPU kernel load failed: {}. Using CPU fallback.", e);
+                        (None, None, false)
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("⚠ GPU initialization failed: {}. Using CPU fallback.", e);
-                (None, false)
+                (None, None, false)
             }
         };
 
@@ -40,8 +51,23 @@ impl QuantumAdapter {
             hamiltonian: Arc::new(Mutex::new(None)),
             phase_field: Arc::new(Mutex::new(None)),
             gpu_device,
+            gpu_module,
             use_gpu,
         }
+    }
+
+    /// Load GPU module for quantum operations
+    fn load_gpu_module(device: &Arc<CudaContext>) -> std::result::Result<Arc<CudaModule>, String> {
+        // Load PTX from runtime location
+        let ptx_path = "target/ptx/quantum_kernels.ptx";
+        let ptx = std::fs::read_to_string(ptx_path)
+            .map_err(|e| format!("Failed to load PTX: {}", e))?;
+
+        // Load module using cudarc 0.17 API (returns Arc<CudaModule>)
+        let module = device.load_module(ptx.into())
+            .map_err(|e| format!("PTX load failed: {}", e))?;
+
+        Ok(module)
     }
 
     /// Build Hamiltonian from coupling matrix (internal helper)
@@ -65,8 +91,15 @@ impl QuantumAdapter {
 
     /// GPU-accelerated Hamiltonian construction
     /// TODO: Implement with proper complex number handling (separate real/imag buffers)
+    /// Currently disabled due to cudarc not supporting (f64,f64) tuple types
     #[allow(dead_code)]
-    fn build_hamiltonian_gpu(&self, coupling_matrix: &Array2<Complex64>) -> Result<Array2<Complex64>> {
+    fn build_hamiltonian_gpu(&self, _coupling_matrix: &Array2<Complex64>) -> Result<Array2<Complex64>> {
+        // Placeholder - needs implementation with separate real/imag buffers
+        Err(PRCTError::QuantumFailed("GPU Hamiltonian construction not yet implemented".into()))
+    }
+
+    /*
+    fn build_hamiltonian_gpu_impl(&self, coupling_matrix: &Array2<Complex64>) -> Result<Array2<Complex64>> {
         let device = self.gpu_device.as_ref().ok_or_else(||
             PRCTError::QuantumFailed("GPU not initialized".into()))?;
 
@@ -87,57 +120,67 @@ impl QuantumAdapter {
         }).collect();
         let masses = vec![1.0; n];
 
-        // Allocate GPU memory
-        let gpu_positions = device.htod_copy(positions.clone())
+        // Allocate GPU memory using stream-based API
+        let stream = device.default_stream();
+        let gpu_positions = stream.memcpy_stod(&positions)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_masses = device.htod_copy(masses.clone())
+        let gpu_masses = stream.memcpy_stod(&masses)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy failed: {}", e)))?;
 
-        let mut gpu_kinetic = device.alloc_zeros::<(f64, f64)>(dim * dim)
+        let mut gpu_kinetic = stream.alloc_zeros::<(f64, f64)>(dim * dim)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_potential = device.alloc_zeros::<(f64, f64)>(dim * dim)
+        let mut gpu_potential = stream.alloc_zeros::<(f64, f64)>(dim * dim)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
 
         // Launch kinetic operator kernel
         let cfg_2d = LaunchConfig {
-            grid_dim: ((dim + 15) / 16) as u32,
+            grid_dim: (((dim + 15) / 16) as u32, ((dim + 15) / 16) as u32, 1),
             block_dim: (16, 16, 1),
             shared_mem_bytes: 0,
         };
 
-        let func_kinetic = device.get_func("quantum_kernels", "build_kinetic_operator")
+        // Get module and functions
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::QuantumFailed("GPU module not loaded".into()))?;
+        let func_kinetic = module.load_function("build_kinetic_operator")
             .map_err(|e| PRCTError::QuantumFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32 = n as u32;
+
+        let mut launch_args1 = stream.launch_builder(&func_kinetic);
+        launch_args1.arg(&mut gpu_kinetic);
+        launch_args1.arg(&gpu_masses);
+        launch_args1.arg(&n_u32);
+        launch_args1.arg(&grid_spacing);
+        launch_args1.arg(&hartree_to_kcalmol);
+
         unsafe {
-            func_kinetic.launch(cfg_2d, (
-                &mut gpu_kinetic,
-                &gpu_masses,
-                n as u32,
-                grid_spacing,
-                hartree_to_kcalmol,
-            )).map_err(|e| PRCTError::QuantumFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args1.launch(cfg_2d).map_err(|e| PRCTError::QuantumFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
         // Launch potential operator kernel
-        let func_potential = device.get_func("quantum_kernels", "build_potential_operator")
+        let func_potential = module.load_function("build_potential_operator")
             .map_err(|e| PRCTError::QuantumFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32_2 = n as u32;
+
+        let mut launch_args2 = stream.launch_builder(&func_potential);
+        launch_args2.arg(&mut gpu_potential);
+        launch_args2.arg(&gpu_positions);
+        launch_args2.arg(&n_u32_2);
+        launch_args2.arg(&lj_epsilon);
+        launch_args2.arg(&lj_sigma);
+        launch_args2.arg(&coulomb_cutoff);
+        launch_args2.arg(&kcalmol_to_hartree);
+
         unsafe {
-            func_potential.launch(cfg_2d, (
-                &mut gpu_potential,
-                &gpu_positions,
-                n as u32,
-                lj_epsilon,
-                lj_sigma,
-                coulomb_cutoff,
-                kcalmol_to_hartree,
-            )).map_err(|e| PRCTError::QuantumFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args2.launch(cfg_2d).map_err(|e| PRCTError::QuantumFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        // Copy results back and combine
-        let kinetic_data: Vec<(f64, f64)> = device.dtoh_sync_copy(&gpu_kinetic)
+        // Copy results back and combine using stream
+        let kinetic_data: Vec<(f64, f64)> = stream.memcpy_dtov(&gpu_kinetic)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy back failed: {}", e)))?;
-        let potential_data: Vec<(f64, f64)> = device.dtoh_sync_copy(&gpu_potential)
+        let potential_data: Vec<(f64, f64)> = stream.memcpy_dtov(&gpu_potential)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy back failed: {}", e)))?;
 
         // H = T + V
@@ -148,11 +191,24 @@ impl QuantumAdapter {
         Array2::from_shape_vec((dim, dim), hamiltonian_data)
             .map_err(|e| PRCTError::QuantumFailed(format!("Array construction failed: {}", e)))
     }
+    */
 
     /// GPU-accelerated state evolution using RK4
     /// TODO: Implement with proper complex number handling (separate real/imag buffers)
+    /// Currently disabled due to cudarc not supporting (f64,f64) tuple types
     #[allow(dead_code)]
     fn evolve_state_gpu(
+        &self,
+        _hamiltonian_matrix: &Array2<Complex64>,
+        _state_vec: &Array1<Complex64>,
+        _evolution_time: f64,
+    ) -> Result<Array1<Complex64>> {
+        // Placeholder - needs implementation with separate real/imag buffers
+        Err(PRCTError::QuantumFailed("GPU state evolution not yet implemented".into()))
+    }
+
+    /*
+    fn evolve_state_gpu_impl(
         &self,
         hamiltonian_matrix: &Array2<Complex64>,
         state_vec: &Array1<Complex64>,
@@ -173,64 +229,73 @@ impl QuantumAdapter {
             .map(|c| (c.re, c.im))
             .collect();
 
-        // Allocate GPU memory
-        let gpu_hamiltonian = device.htod_copy(hamiltonian_gpu_vec)
+        // Allocate GPU memory using stream-based API
+        let stream = device.default_stream();
+        let gpu_hamiltonian = stream.memcpy_stod(&hamiltonian_gpu_vec)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_state = device.htod_copy(state_gpu_vec)
+        let gpu_state = stream.memcpy_stod(&state_gpu_vec)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy failed: {}", e)))?;
 
-        let mut gpu_new_state = device.alloc_zeros::<(f64, f64)>(n)
+        let mut gpu_new_state = stream.alloc_zeros::<(f64, f64)>(n)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_k1 = device.alloc_zeros::<(f64, f64)>(n)
+        let mut gpu_k1 = stream.alloc_zeros::<(f64, f64)>(n)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_k2 = device.alloc_zeros::<(f64, f64)>(n)
+        let mut gpu_k2 = stream.alloc_zeros::<(f64, f64)>(n)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_k3 = device.alloc_zeros::<(f64, f64)>(n)
+        let mut gpu_k3 = stream.alloc_zeros::<(f64, f64)>(n)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_k4 = device.alloc_zeros::<(f64, f64)>(n)
+        let mut gpu_k4 = stream.alloc_zeros::<(f64, f64)>(n)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
 
         // Compute RK4 stages (k1 = H·ψ, etc.)
         let cfg = LaunchConfig {
-            grid_dim: ((n + 255) / 256) as u32,
-            block_dim: 256,
+            grid_dim: (((n + 255) / 256) as u32, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func_matvec = device.get_func("quantum_kernels", "hamiltonian_matvec")
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::QuantumFailed("GPU module not loaded".into()))?;
+        let func_matvec = module.load_function("hamiltonian_matvec")
             .map_err(|e| PRCTError::QuantumFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32 = n as u32;
+
         // k1 = H·ψ
+        let mut launch_args1 = stream.launch_builder(&func_matvec);
+        launch_args1.arg(&gpu_hamiltonian);
+        launch_args1.arg(&gpu_state);
+        launch_args1.arg(&mut gpu_k1);
+        launch_args1.arg(&n_u32);
+
         unsafe {
-            func_matvec.launch(cfg, (
-                &gpu_hamiltonian,
-                &gpu_state,
-                &mut gpu_k1,
-                n as u32,
-            )).map_err(|e| PRCTError::QuantumFailed(format!("k1 launch failed: {}", e)))?;
+            launch_args1.launch(cfg).map_err(|e| PRCTError::QuantumFailed(format!("k1 launch failed: {}", e)))?;
         }
 
         // Simplified RK4: just use k1 for now (can extend to full RK4 later)
-        let func_rk4 = device.get_func("quantum_kernels", "rk4_step")
+        let func_rk4 = module.load_function("rk4_step")
             .map_err(|e| PRCTError::QuantumFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32_2 = n as u32;
+
+        let mut launch_args2 = stream.launch_builder(&func_rk4);
+        launch_args2.arg(&gpu_hamiltonian);
+        launch_args2.arg(&gpu_state);
+        launch_args2.arg(&mut gpu_new_state);
+        launch_args2.arg(&mut gpu_k1);
+        launch_args2.arg(&mut gpu_k2);
+        launch_args2.arg(&mut gpu_k3);
+        launch_args2.arg(&mut gpu_k4);
+        launch_args2.arg(&n_u32_2);
+        launch_args2.arg(&dt);
+        launch_args2.arg(&hbar);
+
         unsafe {
-            func_rk4.launch(cfg, (
-                &gpu_hamiltonian,
-                &gpu_state,
-                &mut gpu_new_state,
-                &mut gpu_k1,
-                &mut gpu_k2,
-                &mut gpu_k3,
-                &mut gpu_k4,
-                n as u32,
-                dt,
-                hbar,
-            )).map_err(|e| PRCTError::QuantumFailed(format!("RK4 launch failed: {}", e)))?;
+            launch_args2.launch(cfg).map_err(|e| PRCTError::QuantumFailed(format!("RK4 launch failed: {}", e)))?;
         }
 
-        // Copy result back
-        let evolved_data: Vec<(f64, f64)> = device.dtoh_sync_copy(&gpu_new_state)
+        // Copy result back using stream
+        let evolved_data: Vec<(f64, f64)> = stream.memcpy_dtov(&gpu_new_state)
             .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy back failed: {}", e)))?;
 
         let evolved: Vec<Complex64> = evolved_data.iter()
@@ -240,6 +305,7 @@ impl QuantumAdapter {
         Array1::from_vec(evolved)
             .into()
     }
+    */
 }
 
 impl QuantumPort for QuantumAdapter {

@@ -9,12 +9,13 @@ use shared_types::*;
 use platform_foundation::{PhysicsCoupling, KuramotoSync};
 use num_complex::Complex64;
 use nalgebra::DMatrix;
-use cudarc::driver::{CudaContext, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaSlice, LaunchConfig, CudaFunction, CudaModule, PushKernelArg};
 use std::sync::Arc;
 
 /// Adapter connecting PRCT domain to GPU-accelerated physics coupling service
 pub struct CouplingAdapter {
     gpu_device: Option<Arc<CudaContext>>,
+    gpu_module: Option<Arc<CudaModule>>,
     use_gpu: bool,
 }
 
@@ -22,21 +23,46 @@ impl CouplingAdapter {
     /// Create new GPU-accelerated coupling adapter
     pub fn new() -> Self {
         // Try to initialize GPU
-        let (gpu_device, use_gpu) = match CudaContext::new(0) {
-            Ok(device) => {
-                println!("✓ Coupling GPU initialized (CUDA device 0)");
-                (Some(Arc::new(device)), true)
+        let (gpu_device, gpu_module, use_gpu) = match CudaContext::new(0) {
+            Ok(device_arc) => {
+                // cudarc 0.17 returns Arc<CudaContext> directly
+                // Try to load GPU kernels
+                match Self::load_gpu_module(&device_arc) {
+                    Ok(module) => {
+                        println!("✓ Coupling GPU initialized (CUDA device 0)");
+                        (Some(device_arc), Some(module), true)
+                    }
+                    Err(e) => {
+                        eprintln!("⚠ GPU kernel load failed: {}. Using CPU fallback.", e);
+                        (None, None, false)
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("⚠ GPU initialization failed: {}. Using CPU fallback.", e);
-                (None, false)
+                (None, None, false)
             }
         };
 
         Self {
             gpu_device,
+            gpu_module,
             use_gpu,
         }
+    }
+
+    /// Load GPU module for coupling operations
+    fn load_gpu_module(device: &Arc<CudaContext>) -> std::result::Result<Arc<CudaModule>, String> {
+        // Load PTX from runtime location
+        let ptx_path = "target/ptx/coupling_kernels.ptx";
+        let ptx = std::fs::read_to_string(ptx_path)
+            .map_err(|e| format!("Failed to load PTX: {}", e))?;
+
+        // Load module using cudarc 0.17 API (returns Arc<CudaModule>)
+        let module = device.load_module(ptx.into())
+            .map_err(|e| format!("PTX load failed: {}", e))?;
+
+        Ok(module)
     }
 
     /// GPU-accelerated Kuramoto synchronization step
@@ -60,41 +86,50 @@ impl CouplingAdapter {
         let frequencies_f32: Vec<f32> = natural_frequencies.iter().map(|&x| x as f32).collect();
         let coupling_f32: Vec<f32> = coupling_matrix.iter().map(|&x| x as f32).collect();
 
-        // Allocate GPU memory
-        let gpu_phases = device.htod_copy(phases_f32.clone())
+        // Allocate GPU memory using stream-based API
+        let stream = device.default_stream();
+        let gpu_phases = stream.memcpy_stod(&phases_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_frequencies = device.htod_copy(frequencies_f32)
+        let gpu_frequencies = stream.memcpy_stod(&frequencies_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_coupling = device.htod_copy(coupling_f32)
+        let gpu_coupling = stream.memcpy_stod(&coupling_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
 
-        let mut gpu_new_phases = device.alloc_zeros::<f32>(n)
+        let mut gpu_new_phases = stream.alloc_zeros::<f32>(n)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
 
         // Launch Kuramoto step kernel
         let cfg = LaunchConfig {
-            grid_dim: ((n + 255) / 256) as u32,
-            block_dim: 256,
+            grid_dim: (((n + 255) / 256) as u32, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func = device.get_func("coupling_kernels", "kuramoto_step")
+        // Get module and function
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU module not loaded".into()))?;
+        let func = module.load_function("kuramoto_step")
             .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32 = n as u32;
+        let coupling_strength_f32 = coupling_strength as f32;
+        let dt_f32 = dt as f32;
+
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&gpu_phases);
+        launch_args.arg(&gpu_frequencies);
+        launch_args.arg(&gpu_coupling);
+        launch_args.arg(&mut gpu_new_phases);
+        launch_args.arg(&n_u32);
+        launch_args.arg(&coupling_strength_f32);
+        launch_args.arg(&dt_f32);
+
         unsafe {
-            func.launch(cfg, (
-                &gpu_phases,
-                &gpu_frequencies,
-                &gpu_coupling,
-                &mut gpu_new_phases,
-                n as u32,
-                coupling_strength as f32,
-                dt as f32,
-            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args.launch(cfg).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        // Copy results back
-        let new_phases_f32: Vec<f32> = device.dtoh_sync_copy(&gpu_new_phases)
+        // Copy results back using stream
+        let new_phases_f32: Vec<f32> = stream.memcpy_dtov(&gpu_new_phases)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
 
         Ok(new_phases_f32.iter().map(|&x| x as f64).collect())
@@ -108,33 +143,39 @@ impl CouplingAdapter {
         let n = phases.len();
         let phases_f32: Vec<f32> = phases.iter().map(|&x| x as f32).collect();
 
-        let gpu_phases = device.htod_copy(phases_f32)
+        let stream = device.default_stream();
+        let gpu_phases = stream.memcpy_stod(&phases_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
 
-        let mut gpu_order_param = device.alloc_zeros::<f32>(1)
+        let mut gpu_order_param = stream.alloc_zeros::<f32>(1)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_mean_phase = device.alloc_zeros::<f32>(1)
+        let mut gpu_mean_phase = stream.alloc_zeros::<f32>(1)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
 
         let cfg = LaunchConfig {
-            grid_dim: ((n + 255) / 256) as u32,
-            block_dim: 256,
+            grid_dim: (((n + 255) / 256) as u32, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func = device.get_func("coupling_kernels", "kuramoto_order_parameter")
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU module not loaded".into()))?;
+        let func = module.load_function("kuramoto_order_parameter")
             .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32 = n as u32;
+
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&gpu_phases);
+        launch_args.arg(&mut gpu_order_param);
+        launch_args.arg(&mut gpu_mean_phase);
+        launch_args.arg(&n_u32);
+
         unsafe {
-            func.launch(cfg, (
-                &gpu_phases,
-                &mut gpu_order_param,
-                &mut gpu_mean_phase,
-                n as u32,
-            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args.launch(cfg).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        let order_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_order_param)
+        let order_vec: Vec<f32> = stream.memcpy_dtov(&gpu_order_param)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
 
         Ok(order_vec[0] as f64)
@@ -154,34 +195,41 @@ impl CouplingAdapter {
         let source_f32: Vec<f32> = source[..n].iter().map(|&x| x as f32).collect();
         let target_f32: Vec<f32> = target[..n].iter().map(|&x| x as f32).collect();
 
-        let gpu_source = device.htod_copy(source_f32)
+        let stream = device.default_stream();
+        let gpu_source = stream.memcpy_stod(&source_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_target = device.htod_copy(target_f32)
+        let gpu_target = stream.memcpy_stod(&target_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
 
-        let mut gpu_te = device.alloc_zeros::<f32>(1)
+        let mut gpu_te = stream.alloc_zeros::<f32>(1)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
 
         let cfg = LaunchConfig {
-            grid_dim: 1,
-            block_dim: 256,
+            grid_dim: (1, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func = device.get_func("coupling_kernels", "transfer_entropy")
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU module not loaded".into()))?;
+        let func = module.load_function("transfer_entropy")
             .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
 
+        let n_u32 = n as u32;
+        let lag_u32 = lag as u32;
+
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&gpu_source);
+        launch_args.arg(&gpu_target);
+        launch_args.arg(&mut gpu_te);
+        launch_args.arg(&n_u32);
+        launch_args.arg(&lag_u32);
+
         unsafe {
-            func.launch(cfg, (
-                &gpu_source,
-                &gpu_target,
-                &mut gpu_te,
-                n as u32,
-                lag as u32,
-            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args.launch(cfg).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        let te_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_te)
+        let te_vec: Vec<f32> = stream.memcpy_dtov(&gpu_te)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
 
         Ok(te_vec[0] as f64)
@@ -199,34 +247,41 @@ impl CouplingAdapter {
         let neuro_f32: Vec<f32> = neuro_phases.iter().map(|&x| x as f32).collect();
         let quantum_f32: Vec<f32> = quantum_phases.iter().map(|&x| x as f32).collect();
 
-        let gpu_neuro = device.htod_copy(neuro_f32)
+        let stream = device.default_stream();
+        let gpu_neuro = stream.memcpy_stod(&neuro_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_quantum = device.htod_copy(quantum_f32)
+        let gpu_quantum = stream.memcpy_stod(&quantum_f32)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
 
-        let mut gpu_strength = device.alloc_zeros::<f32>(1)
+        let mut gpu_strength = stream.alloc_zeros::<f32>(1)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
 
         let cfg = LaunchConfig {
-            grid_dim: ((neuro_phases.len() + 255) / 256) as u32,
-            block_dim: 256,
+            grid_dim: (((neuro_phases.len() + 255) / 256) as u32, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func = device.get_func("coupling_kernels", "compute_coupling_strength")
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU module not loaded".into()))?;
+        let func = module.load_function("compute_coupling_strength")
             .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
 
+        let neuro_len_u32 = neuro_phases.len() as u32;
+        let quantum_len_u32 = quantum_phases.len() as u32;
+
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&gpu_neuro);
+        launch_args.arg(&gpu_quantum);
+        launch_args.arg(&mut gpu_strength);
+        launch_args.arg(&neuro_len_u32);
+        launch_args.arg(&quantum_len_u32);
+
         unsafe {
-            func.launch(cfg, (
-                &gpu_neuro,
-                &gpu_quantum,
-                &mut gpu_strength,
-                neuro_phases.len() as u32,
-                quantum_phases.len() as u32,
-            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args.launch(cfg).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        let strength_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_strength)
+        let strength_vec: Vec<f32> = stream.memcpy_dtov(&gpu_strength)
             .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
 
         Ok(strength_vec[0] as f64)

@@ -8,13 +8,14 @@ use prct_core::errors::{PRCTError, Result};
 use shared_types::*;
 use neuromorphic_engine::{SpikeEncoder, ReservoirComputer, PatternDetector, InputData};
 use neuromorphic_engine::pattern_detector::PatternDetectorConfig;
-use cudarc::driver::{CudaContext, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaSlice, LaunchConfig, CudaFunction, CudaModule, PushKernelArg};
 use std::sync::Arc;
 
 /// Adapter connecting PRCT domain to GPU-accelerated neuromorphic engine
 pub struct NeuromorphicAdapter {
     window_ms: f64,
     gpu_device: Option<Arc<CudaContext>>,
+    gpu_module: Option<Arc<CudaModule>>,
     use_gpu: bool,
 }
 
@@ -22,45 +23,47 @@ impl NeuromorphicAdapter {
     /// Create new GPU-accelerated neuromorphic adapter
     pub fn new() -> Result<Self> {
         // Try to initialize GPU
-        let (gpu_device, use_gpu) = match CudaContext::new(0) {
-            Ok(device) => {
-                println!("✓ Neuromorphic GPU initialized (CUDA device 0)");
-                (Some(Arc::new(device)), true)
+        let (gpu_device, gpu_module, use_gpu) = match CudaContext::new(0) {
+            Ok(device_arc) => {
+                // cudarc 0.17 returns Arc<CudaContext> directly
+                // Try to load GPU kernels
+                match Self::load_gpu_module(&device_arc) {
+                    Ok(module) => {
+                        println!("✓ Neuromorphic GPU initialized (CUDA device 0)");
+                        (Some(device_arc), Some(module), true)
+                    }
+                    Err(e) => {
+                        eprintln!("⚠ GPU kernel load failed: {}. Using CPU fallback.", e);
+                        (None, None, false)
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("⚠ GPU initialization failed: {}. Using CPU fallback.", e);
-                (None, false)
+                (None, None, false)
             }
         };
 
         Ok(Self {
             window_ms: 100.0,
             gpu_device,
+            gpu_module,
             use_gpu,
         })
     }
 
-    /// Load GPU kernels for neuromorphic processing
-    fn load_gpu_kernels(&self) -> Result<()> {
-        if !self.use_gpu {
-            return Err(PRCTError::NeuromorphicFailed("GPU not available".into()));
-        }
-
-        let device = self.gpu_device.as_ref().unwrap();
-
+    /// Load GPU module for neuromorphic processing
+    fn load_gpu_module(device: &Arc<CudaContext>) -> Result<Arc<CudaModule>> {
         // Load PTX from runtime location
         let ptx_path = "target/ptx/neuromorphic_kernels.ptx";
         let ptx = std::fs::read_to_string(ptx_path)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("Failed to load PTX: {}", e)))?;
 
-        device.load_ptx(ptx.into(), "neuromorphic_kernels", &[
-            "encode_spikes_rate",
-            "reservoir_update",
-            "detect_patterns",
-            "compute_coherence"
-        ]).map_err(|e| PRCTError::NeuromorphicFailed(format!("PTX load failed: {}", e)))?;
+        // Load module using cudarc 0.17 API (returns Arc<CudaModule>)
+        let module = device.load_module(ptx.into())
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("PTX load failed: {}", e)))?;
 
-        Ok(())
+        Ok(module)
     }
 
     /// Calculate optimal neuron count for graph size
@@ -79,25 +82,29 @@ impl NeuromorphicAdapter {
         let device = self.gpu_device.as_ref().ok_or_else(||
             PRCTError::NeuromorphicFailed("GPU not initialized".into()))?;
 
-        // Allocate GPU memory
+        // Allocate GPU memory using stream-based API
         let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
-        let gpu_features = device.htod_copy(features_f32.clone())
+        let stream = device.default_stream();
+        let gpu_features = stream.memcpy_stod(&features_f32)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
 
         let max_spikes_per_neuron = 1000;
-        let mut gpu_spike_times = device.alloc_zeros::<f32>(neuron_count * max_spikes_per_neuron)
+        let mut gpu_spike_times = stream.alloc_zeros::<f32>(neuron_count * max_spikes_per_neuron)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
-        let mut gpu_spike_counts = device.alloc_zeros::<u32>(neuron_count)
+        let mut gpu_spike_counts = stream.alloc_zeros::<u32>(neuron_count)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
 
         // Launch encoding kernel
         let cfg = LaunchConfig {
-            grid_dim: ((neuron_count + 255) / 256) as u32,
-            block_dim: 256,
+            grid_dim: (((neuron_count + 255) / 256) as u32, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func = device.get_func("neuromorphic_kernels", "encode_spikes_rate")
+        // Get module and function
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::NeuromorphicFailed("GPU module not loaded".into()))?;
+        let func = module.load_function("encode_spikes_rate")
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel not found: {}", e)))?;
 
         let seed = std::time::SystemTime::now()
@@ -105,24 +112,32 @@ impl NeuromorphicAdapter {
             .unwrap()
             .as_secs();
 
+        let neuron_count_u32 = neuron_count as u32;
+        let features_len_u32 = features.len() as u32;
+        let window_ms_f32 = self.window_ms as f32;
+        let max_rate = 100.0f32;
+        let min_rate = 1.0f32;
+
+        // Use builder pattern for kernel launch
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&gpu_features);
+        launch_args.arg(&mut gpu_spike_times);
+        launch_args.arg(&mut gpu_spike_counts);
+        launch_args.arg(&neuron_count_u32);
+        launch_args.arg(&features_len_u32);
+        launch_args.arg(&window_ms_f32);
+        launch_args.arg(&max_rate);
+        launch_args.arg(&min_rate);
+        launch_args.arg(&seed);
+
         unsafe {
-            func.launch(cfg, (
-                &gpu_features,
-                &mut gpu_spike_times,
-                &mut gpu_spike_counts,
-                neuron_count as u32,
-                features.len() as u32,
-                self.window_ms as f32,
-                100.0f32, // max_rate_hz
-                1.0f32,   // min_rate_hz
-                seed,
-            )).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args.launch(cfg).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        // Copy results back
-        let spike_times: Vec<f32> = device.dtoh_sync_copy(&gpu_spike_times)
+        // Copy results back using stream
+        let spike_times: Vec<f32> = stream.memcpy_dtov(&gpu_spike_times)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
-        let spike_counts: Vec<u32> = device.dtoh_sync_copy(&gpu_spike_counts)
+        let spike_counts: Vec<u32> = stream.memcpy_dtov(&gpu_spike_counts)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
 
         // Convert to spike pattern
@@ -264,64 +279,76 @@ impl NeuromorphicAdapter {
             .map(|i| ((i * 1103515245 + 12345) % 1000) as f32 / 1000.0 - 0.5)
             .collect();
 
-        // Allocate GPU memory
-        let gpu_input = device.htod_copy(input_spikes.clone())
+        // Allocate GPU memory using stream-based API
+        let stream = device.default_stream();
+        let gpu_input = stream.memcpy_stod(&input_spikes)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_w_in = device.htod_copy(w_in)
+        let gpu_w_in = stream.memcpy_stod(&w_in)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
-        let gpu_w_reservoir = device.htod_copy(w_reservoir)
+        let gpu_w_reservoir = stream.memcpy_stod(&w_reservoir)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
 
         let initial_state = vec![0.0f32; reservoir_size];
-        let gpu_state = device.htod_copy(initial_state)
+        let gpu_state = stream.memcpy_stod(&initial_state)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
-        let mut gpu_new_state = device.alloc_zeros::<f32>(reservoir_size)
+        let mut gpu_new_state = stream.alloc_zeros::<f32>(reservoir_size)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
 
         // Launch reservoir update kernel
         let cfg = LaunchConfig {
-            grid_dim: ((reservoir_size + 255) / 256) as u32,
-            block_dim: 256,
+            grid_dim: (((reservoir_size + 255) / 256) as u32, 1, 1),
+            block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
-        let func = device.get_func("neuromorphic_kernels", "reservoir_update")
+        let module = self.gpu_module.as_ref().ok_or_else(||
+            PRCTError::NeuromorphicFailed("GPU module not loaded".into()))?;
+        let func = module.load_function("reservoir_update")
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel not found: {}", e)))?;
 
+        let reservoir_size_u32 = reservoir_size as u32;
+        let input_size_u32 = input_size as u32;
+        let leak_rate = 0.3f32;
+        let spectral_radius = 0.9f32;
+
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&gpu_input);
+        launch_args.arg(&gpu_state);
+        launch_args.arg(&gpu_w_in);
+        launch_args.arg(&gpu_w_reservoir);
+        launch_args.arg(&mut gpu_new_state);
+        launch_args.arg(&reservoir_size_u32);
+        launch_args.arg(&input_size_u32);
+        launch_args.arg(&leak_rate);
+        launch_args.arg(&spectral_radius);
+
         unsafe {
-            func.launch(cfg, (
-                &gpu_input,
-                &gpu_state,
-                &gpu_w_in,
-                &gpu_w_reservoir,
-                &mut gpu_new_state,
-                reservoir_size as u32,
-                input_size as u32,
-                0.3f32,  // leak_rate
-                0.9f32,  // spectral_radius
-            )).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args.launch(cfg).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        // Copy results back
-        let reservoir_states: Vec<f32> = device.dtoh_sync_copy(&gpu_new_state)
+        // Copy results back using stream
+        let reservoir_states: Vec<f32> = stream.memcpy_dtov(&gpu_new_state)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
 
         // Compute coherence on GPU
-        let mut gpu_coherence = device.alloc_zeros::<f32>(1)
+        let mut gpu_coherence = stream.alloc_zeros::<f32>(1)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
 
-        let func_coherence = device.get_func("neuromorphic_kernels", "compute_coherence")
+        let func_coherence = module.load_function("compute_coherence")
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel not found: {}", e)))?;
 
+        let reservoir_size_u32_2 = reservoir_size as u32;
+
+        let mut launch_args2 = stream.launch_builder(&func_coherence);
+        launch_args2.arg(&gpu_new_state);
+        launch_args2.arg(&mut gpu_coherence);
+        launch_args2.arg(&reservoir_size_u32_2);
+
         unsafe {
-            func_coherence.launch(cfg, (
-                &gpu_new_state,
-                &mut gpu_coherence,
-                reservoir_size as u32,
-            )).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
+            launch_args2.launch(cfg).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
         }
 
-        let coherence_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_coherence)
+        let coherence_vec: Vec<f32> = stream.memcpy_dtov(&gpu_coherence)
             .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
         let coherence = coherence_vec[0] as f64;
 

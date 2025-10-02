@@ -17,6 +17,8 @@ use std::collections::HashSet;
 pub struct GpuTspSolver {
     /// CUDA device
     device: Arc<CudaContext>,
+    /// Loaded CUDA module for TSP kernels
+    module: Arc<CudaModule>,
     /// Number of cities
     n_cities: usize,
     /// Distance matrix (CPU copy)
@@ -52,8 +54,8 @@ impl GpuTspSolver {
 
         println!("🔧 Initializing GPU TSP Solver for {} cities...", n);
 
-        // Compute distance matrix on GPU
-        let distance_matrix = Self::compute_distance_matrix_gpu(&device, coupling_matrix)?;
+        // Compute distance matrix on GPU (returns module and matrix)
+        let (module, distance_matrix) = Self::compute_distance_matrix_gpu(&device, coupling_matrix)?;
 
         // Initialize with nearest-neighbor tour (CPU)
         let tour = Self::nearest_neighbor_tour(&distance_matrix);
@@ -63,6 +65,7 @@ impl GpuTspSolver {
 
         Ok(Self {
             device,
+            module,
             n_cities: n,
             distance_matrix,
             tour,
@@ -74,7 +77,7 @@ impl GpuTspSolver {
     fn compute_distance_matrix_gpu(
         device: &Arc<CudaContext>,
         coupling_matrix: &Array2<Complex64>,
-    ) -> Result<Array2<f64>> {
+    ) -> Result<(Arc<CudaModule>, Array2<f64>)> {
         let n = coupling_matrix.nrows();
 
         // Load PTX kernels from runtime location
@@ -103,17 +106,15 @@ impl GpuTspSolver {
             ));
         }
 
-        device.load_ptx(ptx.into(), "tsp_solver", &[
-            "compute_distance_matrix",
-            "find_max_distance",
-            "normalize_distances",
-        ]).context("Failed to load PTX kernels - check CUDA driver version")?;
+        // Load module using cudarc 0.17 API
+        let module = device.load_module(ptx.into())
+            .context("Failed to load PTX module - check CUDA driver version")?;
 
-        let compute_fn = device.get_func("tsp_solver", "compute_distance_matrix")
+        let compute_fn = module.load_function("compute_distance_matrix")
             .context("Failed to get compute_distance_matrix kernel")?;
-        let find_max_fn = device.get_func("tsp_solver", "find_max_distance")
+        let find_max_fn = module.load_function("find_max_distance")
             .context("Failed to get find_max_distance kernel")?;
-        let normalize_fn = device.get_func("tsp_solver", "normalize_distances")
+        let normalize_fn = module.load_function("normalize_distances")
             .context("Failed to get normalize_distances kernel")?;
 
         // Prepare coupling matrix data (split real/imag)
@@ -128,10 +129,11 @@ impl GpuTspSolver {
             }
         }
 
-        // Upload to GPU
-        let gpu_coupling_real = device.htod_sync_copy(&coupling_real)?;
-        let gpu_coupling_imag = device.htod_sync_copy(&coupling_imag)?;
-        let gpu_distances = device.alloc_zeros::<f32>(n * n)?;
+        // Upload to GPU using stream-based API
+        let stream = device.default_stream();
+        let gpu_coupling_real = stream.memcpy_stod(&coupling_real)?;
+        let gpu_coupling_imag = stream.memcpy_stod(&coupling_imag)?;
+        let gpu_distances = stream.alloc_zeros::<f32>(n * n)?;
 
         // Launch distance computation kernel
         let threads = 256;
@@ -142,20 +144,22 @@ impl GpuTspSolver {
             shared_mem_bytes: 0,
         };
 
+        let mut launch_args1 = stream.launch_builder(&compute_fn);
+        launch_args1.arg(&gpu_coupling_real);
+        launch_args1.arg(&gpu_coupling_imag);
+        launch_args1.arg(&gpu_distances);
+        let n_u32 = n as u32;
+            launch_args1.arg(&n_u32);
+
         unsafe {
-            compute_fn.launch(cfg, (
-                &gpu_coupling_real,
-                &gpu_coupling_imag,
-                &gpu_distances,
-                n as u32,
-            ))?;
+            launch_args1.launch(cfg)?;
         }
 
-        device.synchronize()?;
+        stream.synchronize()?;
 
         // Find maximum distance for normalization
         let num_blocks = (n * n + threads - 1) / threads;
-        let gpu_partial_maxs = device.alloc_zeros::<f32>(num_blocks)?;
+        let gpu_partial_maxs = stream.alloc_zeros::<f32>(num_blocks)?;
 
         let cfg_max = LaunchConfig {
             grid_dim: (num_blocks as u32, 1, 1),
@@ -163,33 +167,37 @@ impl GpuTspSolver {
             shared_mem_bytes: (threads * std::mem::size_of::<f32>()) as u32,
         };
 
+        let mut launch_args2 = stream.launch_builder(&find_max_fn);
+        launch_args2.arg(&gpu_distances);
+        launch_args2.arg(&gpu_partial_maxs);
+        let n_u32 = n as u32;
+            launch_args2.arg(&n_u32);
+
         unsafe {
-            find_max_fn.launch(cfg_max, (
-                &gpu_distances,
-                &gpu_partial_maxs,
-                n as u32,
-            ))?;
+            launch_args2.launch(cfg_max)?;
         }
 
-        device.synchronize()?;
+        stream.synchronize()?;
 
         // Download partial maxs and find global max
-        let partial_maxs: Vec<f32> = device.dtoh_sync_copy(&gpu_partial_maxs)?;
+        let partial_maxs: Vec<f32> = stream.memcpy_dtov(&gpu_partial_maxs)?;
         let max_distance = partial_maxs.iter().cloned().fold(0.0f32, f32::max);
 
         // Normalize distances
+        let mut launch_args3 = stream.launch_builder(&normalize_fn);
+        launch_args3.arg(&gpu_distances);
+        launch_args3.arg(&max_distance);
+        let n_u32 = n as u32;
+            launch_args3.arg(&n_u32);
+
         unsafe {
-            normalize_fn.launch(cfg, (
-                &gpu_distances,
-                max_distance,
-                n as u32,
-            ))?;
+            launch_args3.launch(cfg)?;
         }
 
-        device.synchronize()?;
+        stream.synchronize()?;
 
         // Download distance matrix
-        let distances_flat: Vec<f32> = device.dtoh_sync_copy(&gpu_distances)?;
+        let distances_flat: Vec<f32> = stream.memcpy_dtov(&gpu_distances)?;
 
         // Convert to Array2<f64>
         let mut distance_matrix = Array2::zeros((n, n));
@@ -199,7 +207,7 @@ impl GpuTspSolver {
             }
         }
 
-        Ok(distance_matrix)
+        Ok((module, distance_matrix))
     }
 
     /// Nearest neighbor heuristic for initial tour (CPU)
@@ -256,35 +264,6 @@ impl GpuTspSolver {
 
     /// Optimize tour using GPU-accelerated 2-opt
     pub fn optimize_2opt_gpu(&mut self, max_iterations: usize) -> Result<()> {
-        // Load PTX kernels from runtime location
-        let ptx = if let Ok(out_dir) = std::env::var("OUT_DIR") {
-            let ptx_path = std::path::Path::new(&out_dir).join("tsp_solver.ptx");
-            if ptx_path.exists() {
-                std::fs::read_to_string(&ptx_path)
-                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}", ptx_path, e))?
-            } else {
-                let runtime_path = std::path::Path::new("target/ptx/tsp_solver.ptx");
-                std::fs::read_to_string(runtime_path)
-                    .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
-            }
-        } else {
-            let runtime_path = std::path::Path::new("target/ptx/tsp_solver.ptx");
-            std::fs::read_to_string(runtime_path)
-                .map_err(|e| anyhow!("Failed to load PTX from {:?}: {}. Run: cargo build --release", runtime_path, e))?
-        };
-
-        if ptx.is_empty() || !ptx.contains("evaluate_2opt_swaps") {
-            return Err(anyhow!(
-                "Invalid PTX file: missing evaluate_2opt_swaps kernel. Rebuild with: cargo clean && cargo build"
-            ));
-        }
-
-        self.device.load_ptx(ptx.into(), "tsp_solver", &[
-            "evaluate_2opt_swaps",
-            "find_min_delta",
-            "apply_2opt_swap",
-        ]).context("Failed to load PTX kernels - check CUDA driver version")?;
-
         println!("🔄 Running GPU 2-opt optimization (max {} iterations)...", max_iterations);
 
         let n = self.n_cities;
@@ -301,7 +280,14 @@ impl GpuTspSolver {
                 distances_flat[i * n + j] = self.distance_matrix[[i, j]] as f32;
             }
         }
-        let gpu_distances = self.device.htod_sync_copy(&distances_flat)?;
+        let stream = self.device.default_stream();
+        let gpu_distances = stream.memcpy_stod(&distances_flat)?;
+
+        // Get kernel functions once before loop
+        let evaluate_fn = self.module.load_function("evaluate_2opt_swaps")
+            .context("Failed to get evaluate_2opt_swaps kernel")?;
+        let find_min_fn = self.module.load_function("find_min_delta")
+            .context("Failed to get find_min_delta kernel")?;
 
         let mut improved = true;
         let mut iteration = 0;
@@ -310,19 +296,13 @@ impl GpuTspSolver {
         while improved && iteration < max_iterations {
             improved = false;
 
-            // Get kernel functions
-            let evaluate_fn = self.device.get_func("tsp_solver", "evaluate_2opt_swaps")
-                .context("Failed to get evaluate_2opt_swaps kernel")?;
-            let find_min_fn = self.device.get_func("tsp_solver", "find_min_delta")
-                .context("Failed to get find_min_delta kernel")?;
-
             // Upload current tour to GPU
             let tour_u32: Vec<u32> = self.tour.iter().map(|&v| v as u32).collect();
-            let gpu_tour = self.device.htod_sync_copy(&tour_u32)?;
+            let gpu_tour = stream.memcpy_stod(&tour_u32)?;
 
             // Allocate GPU memory for results
-            let gpu_deltas = self.device.alloc_zeros::<f32>(total_swaps)?;
-            let gpu_swap_pairs = self.device.alloc_zeros::<u32>(total_swaps * 2)?;
+            let gpu_deltas = stream.alloc_zeros::<f32>(total_swaps)?;
+            let gpu_swap_pairs = stream.alloc_zeros::<u32>(total_swaps * 2)?;
 
             // Launch evaluation kernel
             let threads = 256;
@@ -333,22 +313,24 @@ impl GpuTspSolver {
                 shared_mem_bytes: 0,
             };
 
+            let mut launch_args1 = stream.launch_builder(&evaluate_fn);
+            launch_args1.arg(&gpu_distances);
+            launch_args1.arg(&gpu_tour);
+            launch_args1.arg(&gpu_deltas);
+            launch_args1.arg(&gpu_swap_pairs);
+            let n_u32 = n as u32;
+            launch_args1.arg(&n_u32);
+
             unsafe {
-                evaluate_fn.launch(cfg, (
-                    &gpu_distances,
-                    &gpu_tour,
-                    &gpu_deltas,
-                    &gpu_swap_pairs,
-                    n as u32,
-                ))?;
+                launch_args1.launch(cfg)?;
             }
 
-            self.device.synchronize()?;
+            stream.synchronize()?;
 
             // Find minimum delta (best improvement)
             let num_blocks = (total_swaps + threads - 1) / threads;
-            let gpu_partial_mins = self.device.alloc_zeros::<f32>(num_blocks)?;
-            let gpu_partial_indices = self.device.alloc_zeros::<u32>(num_blocks)?;
+            let gpu_partial_mins = stream.alloc_zeros::<f32>(num_blocks)?;
+            let gpu_partial_indices = stream.alloc_zeros::<u32>(num_blocks)?;
 
             let cfg_min = LaunchConfig {
                 grid_dim: (num_blocks as u32, 1, 1),
@@ -356,20 +338,22 @@ impl GpuTspSolver {
                 shared_mem_bytes: (threads * (std::mem::size_of::<f32>() + std::mem::size_of::<u32>())) as u32,
             };
 
+            let mut launch_args2 = stream.launch_builder(&find_min_fn);
+            launch_args2.arg(&gpu_deltas);
+            launch_args2.arg(&gpu_partial_mins);
+            launch_args2.arg(&gpu_partial_indices);
+            let total_swaps_u32 = total_swaps as u32;
+            launch_args2.arg(&total_swaps_u32);
+
             unsafe {
-                find_min_fn.launch(cfg_min, (
-                    &gpu_deltas,
-                    &gpu_partial_mins,
-                    &gpu_partial_indices,
-                    total_swaps as u32,
-                ))?;
+                launch_args2.launch(cfg_min)?;
             }
 
-            self.device.synchronize()?;
+            stream.synchronize()?;
 
             // Download partial results and find global minimum
-            let partial_mins: Vec<f32> = self.device.dtoh_sync_copy(&gpu_partial_mins)?;
-            let partial_indices: Vec<u32> = self.device.dtoh_sync_copy(&gpu_partial_indices)?;
+            let partial_mins: Vec<f32> = stream.memcpy_dtov(&gpu_partial_mins)?;
+            let partial_indices: Vec<u32> = stream.memcpy_dtov(&gpu_partial_indices)?;
 
             let mut best_delta = partial_mins[0];
             let mut best_idx = partial_indices[0] as usize;
@@ -383,7 +367,7 @@ impl GpuTspSolver {
 
             // If improvement found, apply swap (on CPU for simplicity)
             if best_delta < -1e-6 {
-                let swap_pairs: Vec<u32> = self.device.dtoh_sync_copy(&gpu_swap_pairs)?;
+                let swap_pairs: Vec<u32> = stream.memcpy_dtov(&gpu_swap_pairs)?;
                 let i = swap_pairs[best_idx * 2] as usize;
                 let j = swap_pairs[best_idx * 2 + 1] as usize;
 
