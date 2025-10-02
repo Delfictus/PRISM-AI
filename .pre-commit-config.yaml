@@ -1,0 +1,63 @@
+# Pre-commit hooks for Active Inference Platform
+# Constitution: Phase 0, Task 0.2
+# Purpose: Enforce code quality and constitution compliance
+
+repos:
+  # Local custom hooks
+  - repo: local
+    hooks:
+      - id: constitution-integrity
+        name: Verify Constitution Integrity
+        entry: bash -c 'sha256sum -c IMPLEMENTATION_CONSTITUTION.md.sha256'
+        language: system
+        always_run: true
+        pass_filenames: false
+
+      - id: constitution-protection
+        name: Block Constitution Modifications
+        entry: .git/hooks/pre-commit
+        language: script
+        always_run: true
+
+      - id: cargo-test
+        name: Run Cargo Tests
+        entry: cargo test --all
+        language: system
+        pass_filenames: false
+        stages: [commit]
+
+      - id: cargo-fmt-check
+        name: Check Rust Formatting
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: Run Clippy Linter
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+
+  # Rust-specific hooks
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt
+        args: ['--all', '--']
+      - id: cargo-check
+        args: ['--all-features']
+      - id: clippy
+        args: ['--all-features', '--', '-D', 'warnings']
