@@ -16,7 +16,7 @@ quantum-engine = { path = "../quantum" }
 platform-foundation = { path = "../foundation" }
 
 # GPU acceleration
-cudarc = { version = "0.11", features = ["driver", "nvrtc"] }
+cudarc = { version = "0.17", features = ["driver", "nvrtc"] }
 
 # Utilities
 anyhow = "1.0"

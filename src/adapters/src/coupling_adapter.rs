@@ -9,12 +9,12 @@ use shared_types::*;
 use platform_foundation::{PhysicsCoupling, KuramotoSync};
 use num_complex::Complex64;
 use nalgebra::DMatrix;
-use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaSlice, LaunchAsync, LaunchConfig};
 use std::sync::Arc;
 
 /// Adapter connecting PRCT domain to GPU-accelerated physics coupling service
 pub struct CouplingAdapter {
-    gpu_device: Option<Arc<CudaDevice>>,
+    gpu_device: Option<Arc<CudaContext>>,
     use_gpu: bool,
 }
 
@@ -22,7 +22,7 @@ impl CouplingAdapter {
     /// Create new GPU-accelerated coupling adapter
     pub fn new() -> Self {
         // Try to initialize GPU
-        let (gpu_device, use_gpu) = match CudaDevice::new(0) {
+        let (gpu_device, use_gpu) = match CudaContext::new(0) {
             Ok(device) => {
                 println!("✓ Coupling GPU initialized (CUDA device 0)");
                 (Some(Arc::new(device)), true)

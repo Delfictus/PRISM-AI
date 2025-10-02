@@ -429,16 +429,6 @@ dependencies = [
 
 [[package]]
 name = "cudarc"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a5bd4d1eee570c3b2ac64ed114125517dd1e541d88dd28fc259f1de4dba8d60"
-dependencies = [
- "half",
- "libloading",
-]
-
-[[package]]
-name = "cudarc"
 version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72ba848ae5c6f3cb36e71eab5f268763e3fabcabe3f7bc683e16f7fa3d46281e"
@@ -1616,7 +1606,7 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "chrono",
- "cudarc 0.17.3",
+ "cudarc",
  "dashmap",
  "nalgebra",
  "ndarray",
@@ -1937,7 +1927,7 @@ name = "prct-adapters"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cudarc 0.11.9",
+ "cudarc",
  "nalgebra",
  "ndarray",
  "neuromorphic-engine",
@@ -2036,7 +2026,7 @@ dependencies = [
  "approx 0.5.1",
  "candle-core",
  "chrono",
- "cudarc 0.11.9",
+ "cudarc",
  "nalgebra",
  "ndarray",
  "ndarray-linalg",

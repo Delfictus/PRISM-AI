@@ -9,14 +9,14 @@
 use ndarray::Array2;
 use num_complex::Complex64;
 use anyhow::{Result, Context, anyhow};
-use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
+use cudarc::driver::*;
 use std::sync::Arc;
 use std::collections::HashSet;
 
 /// GPU-accelerated TSP solver
 pub struct GpuTspSolver {
     /// CUDA device
-    device: Arc<CudaDevice>,
+    device: Arc<CudaContext>,
     /// Number of cities
     n_cities: usize,
     /// Distance matrix (CPU copy)
@@ -44,7 +44,7 @@ impl GpuTspSolver {
         }
 
         // Initialize CUDA device
-        let device = CudaDevice::new(0)
+        let device = CudaContext::new(0)
             .context("Failed to initialize CUDA device 0. Check:\n  \
                      1. NVIDIA driver is installed (nvidia-smi)\n  \
                      2. GPU is accessible from WSL2 (/dev/dxg exists)\n  \
@@ -72,7 +72,7 @@ impl GpuTspSolver {
 
     /// Compute distance matrix on GPU
     fn compute_distance_matrix_gpu(
-        device: &Arc<CudaDevice>,
+        device: &Arc<CudaContext>,
         coupling_matrix: &Array2<Complex64>,
     ) -> Result<Array2<f64>> {
         let n = coupling_matrix.nrows();

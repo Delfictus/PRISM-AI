@@ -8,13 +8,13 @@ use prct_core::errors::{PRCTError, Result};
 use shared_types::*;
 use neuromorphic_engine::{SpikeEncoder, ReservoirComputer, PatternDetector, InputData};
 use neuromorphic_engine::pattern_detector::PatternDetectorConfig;
-use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaSlice, LaunchAsync, LaunchConfig};
 use std::sync::Arc;
 
 /// Adapter connecting PRCT domain to GPU-accelerated neuromorphic engine
 pub struct NeuromorphicAdapter {
     window_ms: f64,
-    gpu_device: Option<Arc<CudaDevice>>,
+    gpu_device: Option<Arc<CudaContext>>,
     use_gpu: bool,
 }
 
@@ -22,7 +22,7 @@ impl NeuromorphicAdapter {
     /// Create new GPU-accelerated neuromorphic adapter
     pub fn new() -> Result<Self> {
         // Try to initialize GPU
-        let (gpu_device, use_gpu) = match CudaDevice::new(0) {
+        let (gpu_device, use_gpu) = match CudaContext::new(0) {
             Ok(device) => {
                 println!("✓ Neuromorphic GPU initialized (CUDA device 0)");
                 (Some(Arc::new(device)), true)

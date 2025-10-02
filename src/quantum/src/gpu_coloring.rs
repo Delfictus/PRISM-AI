@@ -4,7 +4,7 @@
 //! Accelerates adjacency matrix construction, conflict detection, and DSATUR heuristic.
 
 use anyhow::{Result, Context, anyhow};
-use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::*;
 use ndarray::Array2;
 use num_complex::Complex64;
 use std::collections::{HashMap, HashSet};
@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// GPU-accelerated chromatic coloring
 pub struct GpuChromaticColoring {
     /// CUDA device
-    device: Arc<CudaDevice>,
+    device: Arc<CudaContext>,
     /// Number of colors used
     num_colors: usize,
     /// Color assignment (CPU)
@@ -32,7 +32,7 @@ impl GpuChromaticColoring {
         coupling_matrix: &Array2<Complex64>,
         target_colors: usize,
     ) -> Result<Self> {
-        let device = CudaDevice::new(0).context("Failed to initialize CUDA device")?;
+        let device = CudaContext::new(0).context("Failed to initialize CUDA device")?;
 
         let threshold = Self::find_optimal_threshold_gpu(
             &device,
@@ -48,7 +48,7 @@ impl GpuChromaticColoring {
         coupling_matrix: &Array2<Complex64>,
         target_colors: usize,
         threshold: f64,
-        device: Arc<CudaDevice>,
+        device: Arc<CudaContext>,
     ) -> Result<Self> {
         let n = coupling_matrix.nrows();
 
@@ -83,7 +83,7 @@ impl GpuChromaticColoring {
     /// Build adjacency matrix on GPU (parallel)
     /// PRODUCTION-GRADE: Comprehensive error handling and validation
     fn build_adjacency_gpu(
-        device: &Arc<CudaDevice>,
+        device: &Arc<CudaContext>,
         coupling_matrix: &Array2<Complex64>,
         threshold: f64,
     ) -> Result<CudaSlice<u8>> {
@@ -185,7 +185,7 @@ impl GpuChromaticColoring {
     /// Download adjacency matrix from GPU to CPU
     /// PRODUCTION-GRADE: Validation and symmetry enforcement
     fn download_adjacency(
-        device: &Arc<CudaDevice>,
+        device: &Arc<CudaContext>,
         gpu_adjacency: &CudaSlice<u8>,
         n: usize,
     ) -> Result<Array2<bool>> {
@@ -250,7 +250,7 @@ impl GpuChromaticColoring {
     ///
     /// Iteratively finds independent sets and colors them in parallel
     fn jones_plassmann_gpu(
-        device: &Arc<CudaDevice>,
+        device: &Arc<CudaContext>,
         gpu_adjacency: &CudaSlice<u8>,
         n: usize,
         max_colors: usize,
@@ -568,7 +568,7 @@ impl GpuChromaticColoring {
 
     /// Find optimal threshold using GPU-accelerated binary search
     fn find_optimal_threshold_gpu(
-        device: &Arc<CudaDevice>,
+        device: &Arc<CudaContext>,
         coupling_matrix: &Array2<Complex64>,
         target_colors: usize,
     ) -> Result<f64> {
@@ -653,7 +653,7 @@ mod tests {
     #[test]
     fn test_gpu_coloring_basic() {
         // Skip if no GPU available
-        if CudaDevice::new(0).is_err() {
+        if CudaContext::new(0).is_err() {
             return;
         }
 

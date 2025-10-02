@@ -9,7 +9,7 @@ use shared_types::*;
 use quantum_engine::{Hamiltonian, ForceFieldParams, PhaseResonanceField};
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
-use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaSlice, LaunchAsync, LaunchConfig};
 use std::sync::Arc;
 use parking_lot::Mutex;
 
@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 pub struct QuantumAdapter {
     hamiltonian: Arc<Mutex<Option<Hamiltonian>>>,
     phase_field: Arc<Mutex<Option<PhaseResonanceField>>>,
-    gpu_device: Option<Arc<CudaDevice>>,
+    gpu_device: Option<Arc<CudaContext>>,
     use_gpu: bool,
 }
 
@@ -25,7 +25,7 @@ impl QuantumAdapter {
     /// Create new GPU-accelerated quantum adapter
     pub fn new() -> Self {
         // Try to initialize GPU
-        let (gpu_device, use_gpu) = match CudaDevice::new(0) {
+        let (gpu_device, use_gpu) = match CudaContext::new(0) {
             Ok(device) => {
                 println!("✓ Quantum GPU initialized (CUDA device 0)");
                 (Some(Arc::new(device)), true)
@@ -64,6 +64,8 @@ impl QuantumAdapter {
     }
 
     /// GPU-accelerated Hamiltonian construction
+    /// TODO: Implement with proper complex number handling (separate real/imag buffers)
+    #[allow(dead_code)]
     fn build_hamiltonian_gpu(&self, coupling_matrix: &Array2<Complex64>) -> Result<Array2<Complex64>> {
         let device = self.gpu_device.as_ref().ok_or_else(||
             PRCTError::QuantumFailed("GPU not initialized".into()))?;
@@ -148,6 +150,8 @@ impl QuantumAdapter {
     }
 
     /// GPU-accelerated state evolution using RK4
+    /// TODO: Implement with proper complex number handling (separate real/imag buffers)
+    #[allow(dead_code)]
     fn evolve_state_gpu(
         &self,
         hamiltonian_matrix: &Array2<Complex64>,
@@ -251,22 +255,11 @@ impl QuantumPort for QuantumAdapter {
             }
         }
 
-        // GPU path: Build Hamiltonian on GPU
-        if self.use_gpu {
-            let hamiltonian_matrix = self.build_hamiltonian_gpu(&coupling)?;
-            let dimension = hamiltonian_matrix.nrows();
-
-            let matrix_elements: Vec<(f64, f64)> = hamiltonian_matrix.iter()
-                .map(|c| (c.re, c.im))
-                .collect();
-
-            return Ok(HamiltonianState {
-                matrix_elements,
-                eigenvalues: vec![0.0; dimension],
-                ground_state_energy: -1.0,
-                dimension,
-            });
-        }
+        // GPU path: TODO - implement with proper complex number handling
+        // if self.use_gpu {
+        //     let hamiltonian_matrix = self.build_hamiltonian_gpu(&coupling)?;
+        //     ...
+        // }
 
         // CPU fallback
         let hamiltonian = Self::build_hamiltonian_internal(&coupling)?;
@@ -298,86 +291,11 @@ impl QuantumPort for QuantumAdapter {
             .map(|&(re, im)| Complex64::new(re, im))
             .collect();
 
-        // GPU path: Evolve on GPU
-        if self.use_gpu {
-            let dim = (hamiltonian_state.dimension as f64).sqrt() as usize;
-            let hamiltonian_matrix = Array2::from_shape_vec(
-                (dim, dim),
-                hamiltonian_state.matrix_elements.iter()
-                    .map(|(re, im)| Complex64::new(*re, *im))
-                    .collect()
-            ).map_err(|e| PRCTError::QuantumFailed(format!("Matrix reconstruction failed: {}", e)))?;
-
-            let evolved = self.evolve_state_gpu(&hamiltonian_matrix, &state_vec, evolution_time)?;
-
-            // Extract phases for coherence
-            let device = self.gpu_device.as_ref().unwrap();
-            let evolved_gpu_vec: Vec<(f64, f64)> = evolved.iter()
-                .map(|c| (c.re, c.im))
-                .collect();
-            let gpu_evolved = device.htod_copy(evolved_gpu_vec.clone())
-                .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy failed: {}", e)))?;
-
-            let mut gpu_phases = device.alloc_zeros::<f64>(evolved.len())
-                .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-
-            let cfg = LaunchConfig {
-                grid_dim: ((evolved.len() + 255) / 256) as u32,
-                block_dim: 256,
-                shared_mem_bytes: 0,
-            };
-
-            let func_extract = device.get_func("quantum_kernels", "extract_phases")
-                .map_err(|e| PRCTError::QuantumFailed(format!("Kernel not found: {}", e)))?;
-
-            unsafe {
-                func_extract.launch(cfg, (
-                    &gpu_evolved,
-                    &mut gpu_phases,
-                    evolved.len() as u32,
-                )).map_err(|e| PRCTError::QuantumFailed(format!("Phase extraction failed: {}", e)))?;
-            }
-
-            let phases: Vec<f64> = device.dtoh_sync_copy(&gpu_phases)
-                .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy back failed: {}", e)))?;
-
-            // Compute order parameter on GPU
-            let mut gpu_order_param = device.alloc_zeros::<f64>(1)
-                .map_err(|e| PRCTError::QuantumFailed(format!("GPU alloc failed: {}", e)))?;
-
-            let func_order = device.get_func("quantum_kernels", "compute_order_parameter")
-                .map_err(|e| PRCTError::QuantumFailed(format!("Kernel not found: {}", e)))?;
-
-            let gpu_phases_arr = device.htod_copy(phases.clone())
-                .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy failed: {}", e)))?;
-
-            unsafe {
-                func_order.launch(cfg, (
-                    &gpu_phases_arr,
-                    &mut gpu_order_param,
-                    phases.len() as u32,
-                )).map_err(|e| PRCTError::QuantumFailed(format!("Order parameter failed: {}", e)))?;
-            }
-
-            let order_vec: Vec<f64> = device.dtoh_sync_copy(&gpu_order_param)
-                .map_err(|e| PRCTError::QuantumFailed(format!("GPU copy back failed: {}", e)))?;
-            let phase_coherence = order_vec[0];
-
-            // Energy (simplified)
-            let energy = evolved.iter().map(|c| c.norm_sqr()).sum::<f64>();
-
-            let amplitudes: Vec<(f64, f64)> = evolved.iter()
-                .map(|c| (c.re, c.im))
-                .collect();
-
-            return Ok(QuantumState {
-                amplitudes,
-                phase_coherence,
-                energy,
-                entanglement: 0.0,
-                timestamp_ns: 0,
-            });
-        }
+        // GPU path: TODO - implement with proper complex number handling
+        // if self.use_gpu {
+        //     let evolved = self.evolve_state_gpu(...)?;
+        //     ...
+        // }
 
         // CPU fallback
         let mut hamiltonian_guard = self.hamiltonian.lock();
