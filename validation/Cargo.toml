@@ -1,0 +1,17 @@
+[package]
+name = "validation"
+version = "0.1.0"
+edition = "2021"
+authors = ["Active Inference Platform Team"]
+description = "Validation framework for constitution compliance"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+[lib]
+name = "validation"
+path = "src/lib.rs"
