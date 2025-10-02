@@ -69,6 +69,82 @@ impl NeuromorphicAdapter {
         // Use 10x vertices as a reasonable scaling factor
         (graph.num_vertices * 10).clamp(10, 1000)
     }
+
+    /// GPU-accelerated spike encoding
+    fn encode_spikes_gpu(
+        &self,
+        features: &[f64],
+        neuron_count: usize,
+    ) -> Result<SpikePattern> {
+        let device = self.gpu_device.as_ref().ok_or_else(||
+            PRCTError::NeuromorphicFailed("GPU not initialized".into()))?;
+
+        // Allocate GPU memory
+        let features_f32: Vec<f32> = features.iter().map(|&x| x as f32).collect();
+        let gpu_features = device.htod_copy(features_f32.clone())
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy failed: {}", e)))?;
+
+        let max_spikes_per_neuron = 1000;
+        let mut gpu_spike_times = device.alloc_zeros::<f32>(neuron_count * max_spikes_per_neuron)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
+        let mut gpu_spike_counts = device.alloc_zeros::<u32>(neuron_count)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU alloc failed: {}", e)))?;
+
+        // Launch encoding kernel
+        let cfg = LaunchConfig {
+            grid_dim: ((neuron_count + 255) / 256) as u32,
+            block_dim: 256,
+            shared_mem_bytes: 0,
+        };
+
+        let func = device.get_func("neuromorphic_kernels", "encode_spikes_rate")
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel not found: {}", e)))?;
+
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        unsafe {
+            func.launch(cfg, (
+                &gpu_features,
+                &mut gpu_spike_times,
+                &mut gpu_spike_counts,
+                neuron_count as u32,
+                features.len() as u32,
+                self.window_ms as f32,
+                100.0f32, // max_rate_hz
+                1.0f32,   // min_rate_hz
+                seed,
+            )).map_err(|e| PRCTError::NeuromorphicFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        // Copy results back
+        let spike_times: Vec<f32> = device.dtoh_sync_copy(&gpu_spike_times)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
+        let spike_counts: Vec<u32> = device.dtoh_sync_copy(&gpu_spike_counts)
+            .map_err(|e| PRCTError::NeuromorphicFailed(format!("GPU copy back failed: {}", e)))?;
+
+        // Convert to spike pattern
+        let mut spikes = Vec::new();
+        for neuron_id in 0..neuron_count {
+            let count = spike_counts[neuron_id] as usize;
+            let offset = neuron_id * max_spikes_per_neuron;
+            for i in 0..count {
+                spikes.push(Spike {
+                    neuron_id,
+                    time_ms: spike_times[offset + i] as f64,
+                    amplitude: 1.0,
+                });
+            }
+        }
+
+        Ok(SpikePattern {
+            spikes,
+            duration_ms: self.window_ms,
+            num_neurons: neuron_count,
+        })
+    }
 }
 
 impl NeuromorphicPort for NeuromorphicAdapter {
@@ -89,17 +165,18 @@ impl NeuromorphicPort for NeuromorphicAdapter {
             })
             .collect();
 
-        let input_data = InputData::new("graph_encoding".to_string(), features);
+        // GPU-accelerated spike encoding if available
+        if self.use_gpu {
+            return self.encode_spikes_gpu(&features, neuron_count);
+        }
 
-        // Create encoder
+        // CPU fallback
+        let input_data = InputData::new("graph_encoding".to_string(), features);
         let mut encoder = SpikeEncoder::new(neuron_count, self.window_ms)
             .map_err(|e| PRCTError::NeuromorphicFailed(e.to_string()))?;
-
-        // Encode
         let engine_spikes = encoder.encode(&input_data)
             .map_err(|e| PRCTError::NeuromorphicFailed(e.to_string()))?;
 
-        // Convert to shared-types
         let spikes: Vec<Spike> = engine_spikes.spikes.iter().map(|s| {
             Spike {
                 neuron_id: s.neuron_id,
