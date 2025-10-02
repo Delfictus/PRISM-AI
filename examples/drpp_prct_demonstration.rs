@@ -102,7 +102,8 @@ fn demo_full_drpp_prct() -> Result<()> {
             (2, 3, 1.0), (2, 4, 1.0),
             (3, 4, 1.0),
         ],
-        adjacency_matrix: vec![],
+        adjacency: vec![],
+        coordinates: None,
     };
 
     println!("Graph: K5 (5 vertices, 10 edges, χ=5)\n");
@@ -114,6 +115,7 @@ fn demo_full_drpp_prct() -> Result<()> {
     let config = DrppPrctConfig {
         target_colors: 5,
         enable_drpp: true,
+        quantum_evolution_time: 0.01, // Small time step for stability
         ..Default::default()
     };
 
