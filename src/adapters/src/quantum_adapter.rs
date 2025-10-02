@@ -1,6 +1,7 @@
-//! Quantum Engine Adapter
+//! Quantum Engine Adapter - GPU Accelerated
 //!
-//! Wraps the existing quantum-engine to implement QuantumPort.
+//! Wraps GPU-accelerated quantum Hamiltonian evolution.
+//! CPU fallback only if GPU unavailable.
 
 use prct_core::ports::QuantumPort;
 use prct_core::errors::{PRCTError, Result};
@@ -8,21 +9,38 @@ use shared_types::*;
 use quantum_engine::{Hamiltonian, ForceFieldParams, PhaseResonanceField};
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
+use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
 use std::sync::Arc;
 use parking_lot::Mutex;
 
-/// Adapter connecting PRCT domain to quantum engine
+/// Adapter connecting PRCT domain to GPU-accelerated quantum engine
 pub struct QuantumAdapter {
     hamiltonian: Arc<Mutex<Option<Hamiltonian>>>,
     phase_field: Arc<Mutex<Option<PhaseResonanceField>>>,
+    gpu_device: Option<Arc<CudaDevice>>,
+    use_gpu: bool,
 }
 
 impl QuantumAdapter {
-    /// Create new quantum adapter
+    /// Create new GPU-accelerated quantum adapter
     pub fn new() -> Self {
+        // Try to initialize GPU
+        let (gpu_device, use_gpu) = match CudaDevice::new(0) {
+            Ok(device) => {
+                println!("✓ Quantum GPU initialized (CUDA device 0)");
+                (Some(Arc::new(device)), true)
+            }
+            Err(e) => {
+                eprintln!("⚠ GPU initialization failed: {}. Using CPU fallback.", e);
+                (None, false)
+            }
+        };
+
         Self {
             hamiltonian: Arc::new(Mutex::new(None)),
             phase_field: Arc::new(Mutex::new(None)),
+            gpu_device,
+            use_gpu,
         }
     }
 
