@@ -1,0 +1,96 @@
+---
+project:
+  name: "Active Inference Platform"
+  type: "Scientific Computing Platform"
+  description: "Pure software neuromorphic-quantum platform with active inference"
+  repository: "https://github.com/1onlyadvance/neuromorphic-quantum-platform"
+
+  constitution:
+    file: "IMPLEMENTATION_CONSTITUTION.md"
+    version: "1.0.0"
+    hash: "ca7d9a8d1671a2d46bbcbdf72186d43c353aabc5be89e954a4d78bb5c536d966"
+
+  languages:
+    primary: "Rust"
+    gpu: "CUDA"
+    scripting: ["Python", "Bash"]
+
+  scientific_domains:
+    - information_theory
+    - statistical_mechanics
+    - quantum_mechanics
+    - active_inference
+    - neuromorphic_computing
+
+  architecture:
+    pattern: "GPU-First"
+    no_cpu_fallback: true
+    real_time: true
+
+  constraints:
+    scientific:
+      - "Must respect thermodynamic laws (dS/dt >= 0)"
+      - "Must maintain information bounds"
+      - "Must satisfy quantum mechanics constraints"
+      - "No pseudoscience terminology"
+
+    technical:
+      - "GPU-mandatory execution"
+      - "Production-grade error handling"
+      - "Comprehensive test coverage (>95%)"
+      - "Performance contracts must be met"
+
+    process:
+      - "No code without validation gates"
+      - "No phase skipping"
+      - "Constitution is supreme authority"
+
+  validation_requirements:
+    mathematical:
+      - "All functions have proofs"
+      - "Both analytical and numerical verification"
+      - "Edge cases documented and tested"
+
+    implementation:
+      - "GPU kernels have CPU reference"
+      - "Performance benchmarks included"
+      - "Error paths tested"
+
+    integration:
+      - "End-to-end tests required"
+      - "Cross-domain validation"
+      - "Production scenarios covered"
+
+  performance_targets:
+    transfer_entropy:
+      latency_ms: 20
+      throughput_pairs_per_sec: 10000
+      accuracy_epsilon: 0.00001
+
+    thermodynamic_evolution:
+      latency_ms: 1
+      oscillators: 1024
+      entropy_constraint: "non-negative"
+
+    active_inference:
+      latency_ms: 5
+      throughput_inferences_per_sec: 200
+      rmse_percent: 5
+
+    end_to_end:
+      latency_ms: 10
+      fps: 100
+      psnr_db: 30
+
+  current_status:
+    phase: 0
+    task: "0.1"
+    status: "Setting up governance"
+    last_updated: "2024-01-28"
+
+  team:
+    roles:
+      - "Technical Lead"
+      - "Scientific Advisor"
+      - "Project Manager"
+      - "AI Assistant"
