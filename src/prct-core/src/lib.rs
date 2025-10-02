@@ -10,6 +10,7 @@
 
 pub mod ports;
 pub mod algorithm;
+pub mod drpp_algorithm;
 pub mod coupling;
 pub mod coloring;
 pub mod tsp;
@@ -18,6 +19,7 @@ pub mod errors;
 // Re-export main types
 pub use ports::*;
 pub use algorithm::*;
+pub use drpp_algorithm::*;
 pub use coupling::*;
 pub use errors::*;
 
