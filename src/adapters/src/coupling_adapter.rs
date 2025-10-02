@@ -1,6 +1,7 @@
-//! Physics Coupling Adapter
+//! Physics Coupling Adapter - GPU Accelerated
 //!
 //! Wraps PhysicsCoupling from platform-foundation (commit 35963c6) to implement PhysicsCouplingPort.
+//! GPU-accelerated Kuramoto synchronization and transfer entropy.
 
 use prct_core::ports::PhysicsCouplingPort;
 use prct_core::errors::{PRCTError, Result};
@@ -8,16 +9,227 @@ use shared_types::*;
 use platform_foundation::{PhysicsCoupling, KuramotoSync};
 use num_complex::Complex64;
 use nalgebra::DMatrix;
+use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use std::sync::Arc;
 
-/// Adapter connecting PRCT domain to physics coupling service
+/// Adapter connecting PRCT domain to GPU-accelerated physics coupling service
 pub struct CouplingAdapter {
-    // Stateless adapter - PhysicsCoupling is constructed on demand
+    gpu_device: Option<Arc<CudaDevice>>,
+    use_gpu: bool,
 }
 
 impl CouplingAdapter {
-    /// Create new coupling adapter
+    /// Create new GPU-accelerated coupling adapter
     pub fn new() -> Self {
-        Self {}
+        // Try to initialize GPU
+        let (gpu_device, use_gpu) = match CudaDevice::new(0) {
+            Ok(device) => {
+                println!("✓ Coupling GPU initialized (CUDA device 0)");
+                (Some(Arc::new(device)), true)
+            }
+            Err(e) => {
+                eprintln!("⚠ GPU initialization failed: {}. Using CPU fallback.", e);
+                (None, false)
+            }
+        };
+
+        Self {
+            gpu_device,
+            use_gpu,
+        }
+    }
+
+    /// GPU-accelerated Kuramoto synchronization step
+    fn kuramoto_step_gpu(
+        &self,
+        phases: &[f64],
+        natural_frequencies: &[f64],
+        coupling_strength: f64,
+        dt: f64,
+    ) -> Result<Vec<f64>> {
+        let device = self.gpu_device.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU not initialized".into()))?;
+
+        let n = phases.len();
+
+        // Build coupling matrix (all-to-all with uniform strength)
+        let coupling_matrix = vec![coupling_strength; n * n];
+
+        // Convert to f32 for GPU
+        let phases_f32: Vec<f32> = phases.iter().map(|&x| x as f32).collect();
+        let frequencies_f32: Vec<f32> = natural_frequencies.iter().map(|&x| x as f32).collect();
+        let coupling_f32: Vec<f32> = coupling_matrix.iter().map(|&x| x as f32).collect();
+
+        // Allocate GPU memory
+        let gpu_phases = device.htod_copy(phases_f32.clone())
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+        let gpu_frequencies = device.htod_copy(frequencies_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+        let gpu_coupling = device.htod_copy(coupling_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+
+        let mut gpu_new_phases = device.alloc_zeros::<f32>(n)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
+
+        // Launch Kuramoto step kernel
+        let cfg = LaunchConfig {
+            grid_dim: ((n + 255) / 256) as u32,
+            block_dim: 256,
+            shared_mem_bytes: 0,
+        };
+
+        let func = device.get_func("coupling_kernels", "kuramoto_step")
+            .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
+
+        unsafe {
+            func.launch(cfg, (
+                &gpu_phases,
+                &gpu_frequencies,
+                &gpu_coupling,
+                &mut gpu_new_phases,
+                n as u32,
+                coupling_strength as f32,
+                dt as f32,
+            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        // Copy results back
+        let new_phases_f32: Vec<f32> = device.dtoh_sync_copy(&gpu_new_phases)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
+
+        Ok(new_phases_f32.iter().map(|&x| x as f64).collect())
+    }
+
+    /// GPU-accelerated order parameter computation
+    fn compute_order_parameter_gpu(&self, phases: &[f64]) -> Result<f64> {
+        let device = self.gpu_device.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU not initialized".into()))?;
+
+        let n = phases.len();
+        let phases_f32: Vec<f32> = phases.iter().map(|&x| x as f32).collect();
+
+        let gpu_phases = device.htod_copy(phases_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+
+        let mut gpu_order_param = device.alloc_zeros::<f32>(1)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
+        let mut gpu_mean_phase = device.alloc_zeros::<f32>(1)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
+
+        let cfg = LaunchConfig {
+            grid_dim: ((n + 255) / 256) as u32,
+            block_dim: 256,
+            shared_mem_bytes: 0,
+        };
+
+        let func = device.get_func("coupling_kernels", "kuramoto_order_parameter")
+            .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
+
+        unsafe {
+            func.launch(cfg, (
+                &gpu_phases,
+                &mut gpu_order_param,
+                &mut gpu_mean_phase,
+                n as u32,
+            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        let order_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_order_param)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
+
+        Ok(order_vec[0] as f64)
+    }
+
+    /// GPU-accelerated transfer entropy calculation
+    fn calculate_transfer_entropy_gpu(
+        &self,
+        source: &[f64],
+        target: &[f64],
+        lag: usize,
+    ) -> Result<f64> {
+        let device = self.gpu_device.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU not initialized".into()))?;
+
+        let n = source.len().min(target.len());
+        let source_f32: Vec<f32> = source[..n].iter().map(|&x| x as f32).collect();
+        let target_f32: Vec<f32> = target[..n].iter().map(|&x| x as f32).collect();
+
+        let gpu_source = device.htod_copy(source_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+        let gpu_target = device.htod_copy(target_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+
+        let mut gpu_te = device.alloc_zeros::<f32>(1)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
+
+        let cfg = LaunchConfig {
+            grid_dim: 1,
+            block_dim: 256,
+            shared_mem_bytes: 0,
+        };
+
+        let func = device.get_func("coupling_kernels", "transfer_entropy")
+            .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
+
+        unsafe {
+            func.launch(cfg, (
+                &gpu_source,
+                &gpu_target,
+                &mut gpu_te,
+                n as u32,
+                lag as u32,
+            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        let te_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_te)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
+
+        Ok(te_vec[0] as f64)
+    }
+
+    /// GPU-accelerated coupling strength computation
+    fn compute_coupling_strength_gpu(
+        &self,
+        neuro_phases: &[f64],
+        quantum_phases: &[f64],
+    ) -> Result<f64> {
+        let device = self.gpu_device.as_ref().ok_or_else(||
+            PRCTError::CouplingFailed("GPU not initialized".into()))?;
+
+        let neuro_f32: Vec<f32> = neuro_phases.iter().map(|&x| x as f32).collect();
+        let quantum_f32: Vec<f32> = quantum_phases.iter().map(|&x| x as f32).collect();
+
+        let gpu_neuro = device.htod_copy(neuro_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+        let gpu_quantum = device.htod_copy(quantum_f32)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy failed: {}", e)))?;
+
+        let mut gpu_strength = device.alloc_zeros::<f32>(1)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU alloc failed: {}", e)))?;
+
+        let cfg = LaunchConfig {
+            grid_dim: ((neuro_phases.len() + 255) / 256) as u32,
+            block_dim: 256,
+            shared_mem_bytes: 0,
+        };
+
+        let func = device.get_func("coupling_kernels", "compute_coupling_strength")
+            .map_err(|e| PRCTError::CouplingFailed(format!("Kernel not found: {}", e)))?;
+
+        unsafe {
+            func.launch(cfg, (
+                &gpu_neuro,
+                &gpu_quantum,
+                &mut gpu_strength,
+                neuro_phases.len() as u32,
+                quantum_phases.len() as u32,
+            )).map_err(|e| PRCTError::CouplingFailed(format!("Kernel launch failed: {}", e)))?;
+        }
+
+        let strength_vec: Vec<f32> = device.dtoh_sync_copy(&gpu_strength)
+            .map_err(|e| PRCTError::CouplingFailed(format!("GPU copy back failed: {}", e)))?;
+
+        Ok(strength_vec[0] as f64)
     }
 }
 
@@ -66,17 +278,30 @@ impl PhysicsCouplingPort for CouplingAdapter {
         quantum_phases: &[f64],
         dt: f64,
     ) -> Result<KuramotoState> {
-        // Build coupling matrix between neuromorphic and quantum oscillators
-        let n = neuro_phases.len().max(quantum_phases.len());
-
-        // Simple Kuramoto update (can be enhanced with full PhysicsCoupling later)
+        // Combine phases from both subsystems
         let mut phases = neuro_phases.to_vec();
         phases.extend_from_slice(quantum_phases);
 
+        let n = phases.len();
         let natural_frequencies = vec![1.0; n];
         let coupling_strength = 0.5;
 
-        // Kuramoto step
+        // GPU path: Kuramoto on GPU
+        if self.use_gpu {
+            let new_phases = self.kuramoto_step_gpu(&phases, &natural_frequencies, coupling_strength, dt)?;
+            let order_parameter = self.compute_order_parameter_gpu(&new_phases)?;
+            let mean_phase = new_phases.iter().sum::<f64>() / n as f64;
+
+            return Ok(KuramotoState {
+                phases: new_phases,
+                natural_frequencies,
+                coupling_matrix: vec![coupling_strength; n * n],
+                order_parameter,
+                mean_phase,
+            });
+        }
+
+        // CPU fallback
         let new_phases: Vec<f64> = (0..n).map(|i| {
             let mut coupling_sum = 0.0;
             for j in 0..n {
@@ -88,7 +313,6 @@ impl PhysicsCouplingPort for CouplingAdapter {
             (phases[i] + dphase * dt) % (2.0 * core::f64::consts::PI)
         }).collect();
 
-        // Compute order parameter
         let sum_real: f64 = new_phases.iter().map(|p| p.cos()).sum();
         let sum_imag: f64 = new_phases.iter().map(|p| p.sin()).sum();
         let order_parameter = ((sum_real / n as f64).powi(2) + (sum_imag / n as f64).powi(2)).sqrt();
@@ -96,7 +320,7 @@ impl PhysicsCouplingPort for CouplingAdapter {
         Ok(KuramotoState {
             phases: new_phases.clone(),
             natural_frequencies,
-            coupling_matrix: vec![0.5; n * n],
+            coupling_matrix: vec![coupling_strength; n * n],
             order_parameter,
             mean_phase: new_phases.iter().sum::<f64>() / n as f64,
         })
@@ -106,35 +330,43 @@ impl PhysicsCouplingPort for CouplingAdapter {
         &self,
         source: &[f64],
         target: &[f64],
-        _lag: f64,
+        lag: f64,
     ) -> Result<TransferEntropy> {
-        // Use minimum length to handle different-sized arrays
         let n = source.len().min(target.len());
 
         if n < 2 {
-            // Not enough data for transfer entropy
             return Ok(TransferEntropy {
                 entropy_bits: 0.0,
                 confidence: 0.0,
-                lag_ms: 10.0,
+                lag_ms: lag,
             });
         }
 
-        // Simplified transfer entropy calculation
-        let mut te = 0.0;
+        // GPU path: Transfer entropy on GPU
+        if self.use_gpu {
+            let lag_samples = (lag / 10.0).max(1.0) as usize;
+            let te = self.calculate_transfer_entropy_gpu(source, target, lag_samples)?;
 
+            return Ok(TransferEntropy {
+                entropy_bits: te,
+                confidence: 0.9,
+                lag_ms: lag,
+            });
+        }
+
+        // CPU fallback
+        let mut te = 0.0;
         for i in 1..n {
             let dy = target[i] - target[i - 1];
             let x_prev = source[i - 1];
             te += (dy * x_prev).abs();
         }
-
         te /= (n - 1) as f64;
 
         Ok(TransferEntropy {
             entropy_bits: te,
             confidence: 0.9,
-            lag_ms: 10.0,
+            lag_ms: lag,
         })
     }
 
