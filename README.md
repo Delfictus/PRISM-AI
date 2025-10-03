@@ -58,8 +58,8 @@ neuromorphic-quantum-platform/
 
 ```bash
 # Clone the repository
-git clone https://github.com/1onlyadvance/Platform-Demo.git
-cd Platform-Demo
+git clone https://github.com/1onlyadvance/DARPA-DEMO.git
+cd DARPA-DEMO
 
 # Build the platform
 cargo build --release

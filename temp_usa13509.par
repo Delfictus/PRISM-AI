@@ -1,4 +1,0 @@
-PROBLEM_FILE = temp_usa13509.tsp
-OUTPUT_TOUR_FILE = temp_usa13509.tour
-RUNS = 1
-TIME_LIMIT = 120

@@ -97,7 +97,7 @@ This directory contains all materials related to the DARPA Narcissus proposal, w
 
 **Principal Investigator:** Ididia Serfaty
 **Email:** IS@delfiuctus.com
-**Platform:** https://github.com/1onlyadvance/Platform-Demo
+**Platform:** https://github.com/1onlyadvance/DARPA-DEMO
 
 ---
 

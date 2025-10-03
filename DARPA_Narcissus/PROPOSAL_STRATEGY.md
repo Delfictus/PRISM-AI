@@ -560,4 +560,4 @@ This proposal will demonstrate "undeniable disruption and superiority" exactly a
 
 *Document prepared by: Ididia Serfaty <IS@delfiuctus.com>*
 *Neuromorphic-Quantum Computing Platform*
-*https://github.com/1onlyadvance/Platform-Demo*
+*https://github.com/1onlyadvance/DARPA-DEMO*

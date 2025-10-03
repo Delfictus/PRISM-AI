@@ -573,7 +573,7 @@ Starting from your original request to "make everything run on GPU," we:
 
 ## 📞 Contact & Repository
 
-**GitHub:** https://github.com/1onlyadvance/Platform-Demo
+**GitHub:** https://github.com/1onlyadvance/DARPA-DEMO
 **Latest Commit:** 0a1d623 (Validate DRPP Theory Components)
 **Build Status:** ✅ Passing
 **License:** Proprietary / DARPA Research
