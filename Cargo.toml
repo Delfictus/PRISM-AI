@@ -15,6 +15,7 @@ members = [
     "src/shared-types",
     "src/prct-core",
     "src/adapters",
+    "src/mathematics",
     "validation",
 ]
 
@@ -32,6 +33,7 @@ platform-foundation = { path = "src/foundation" }
 shared-types = { path = "src/shared-types" }
 prct-core = { path = "src/prct-core" }
 prct-adapters = { path = "src/adapters" }
+mathematics = { path = "src/mathematics" }
 
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

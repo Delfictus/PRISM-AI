@@ -1488,6 +1488,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
+name = "mathematics"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+]
+
+[[package]]
 name = "matrixmultiply"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1623,6 +1631,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "log",
+ "mathematics",
  "ndarray",
  "neuromorphic-engine",
  "num-complex",
