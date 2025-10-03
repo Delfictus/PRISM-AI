@@ -54,6 +54,7 @@
 
 pub mod performance_tuner;
 pub mod kernel_tuner;
+pub mod memory_optimizer;
 
 pub use performance_tuner::{
     PerformanceTuner,
@@ -68,4 +69,10 @@ pub use kernel_tuner::{
     GpuProperties,
     KernelConfig,
     OccupancyInfo,
+};
+
+pub use memory_optimizer::{
+    MemoryOptimizer,
+    PinnedMemoryPool,
+    PipelineStats,
 };
