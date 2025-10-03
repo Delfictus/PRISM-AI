@@ -156,9 +156,9 @@ impl HeisenbergUncertainty {
 
             // For superposition, uncertainties are typically larger
             // We use a conservative estimate
-            let sigma_eff = (sigma1.powi(2) + sigma2.powi(2) + separation.powi(2) / 4.0).sqrt();
+            let sigma_eff = (sigma1.powi(2) + sigma2.powi(2) + separation.powi(2) / 4.0_f64).sqrt();
             let delta_x = sigma_eff;
-            let delta_p = hbar / (2.0 * sigma1.min(sigma2)); // Lower bound estimate
+            let delta_p = hbar / (2.0_f64 * sigma1.min(sigma2)); // Lower bound estimate
 
             let product = delta_x * delta_p;
             if product < hbar / 2.0 - self.config.tolerance {

@@ -1,9 +1,9 @@
 [package]
-name = "neuromorphic-quantum-platform"
+name = "active-inference-platform"
 version = "0.1.0"
 edition = "2021"
-authors = ["ARES-51 Research"]
-description = "World's first software-based neuromorphic-quantum computing platform"
+authors = ["Active Inference Research"]
+description = "Scientifically rigorous active inference platform with GPU acceleration"
 license = "MIT"
 build = "build_cuda.rs"
 
@@ -41,10 +41,17 @@ serde_json = "1.0"
 anyhow = "1.0"
 rayon = "1.10"
 ndarray = "0.15"
+approx = "0.5"
 num-complex = "0.4"
+nalgebra = "0.32"
+rustfft = "6.1"
+statrs = "0.16"
+kdtree = "0.7"
+ordered-float = "3.0"
 env_logger = "0.11"
 log = "0.4"
 rand = "0.8"
+rand_chacha = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 chrono = "0.4"
 
@@ -153,5 +160,9 @@ name = "comprehensive_benchmark"
 path = "examples/comprehensive_benchmark.rs"
 
 [lib]
-name = "neuromorphic_quantum_platform"
+name = "active_inference_platform"
 path = "src/lib.rs"
+
+[[test]]
+name = "transfer_entropy"
+path = "tests/transfer_entropy_tests.rs"
