@@ -12,6 +12,8 @@ pub mod variational_inference;
 pub mod recognition_model;
 pub mod policy_selection;
 pub mod controller;
+#[cfg(feature = "cuda")]
+pub mod gpu_inference;
 
 pub use generative_model::{GenerativeModel, PerformanceMetrics};
 pub use hierarchical_model::{HierarchicalModel, StateSpaceLevel, GaussianBelief, GeneralizedCoordinates};

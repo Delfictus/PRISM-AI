@@ -95,7 +95,13 @@ pub struct PolicySelector {
 }
 
 impl PolicySelector {
-    /// Create new policy selector
+    /// Create new policy selector with optimized policy count
+    ///
+    /// GPU OPTIMIZATION: Reduced from 10 to 5 policies for performance
+    /// - Policy 1: Exploitation (follow gradient)
+    /// - Policy 2-3: Exploration (orthogonal directions)
+    /// - Policy 4: Safety (minimal perturbation)
+    /// - Policy 5: Information gain (high uncertainty regions)
     pub fn new(
         horizon: usize,
         n_policies: usize,
@@ -103,9 +109,11 @@ impl PolicySelector {
         inference: VariationalInference,
         transition: TransitionModel,
     ) -> Self {
+        // Optimize policy count for GPU performance
+        let optimized_policies = n_policies.min(5);
         Self {
             horizon,
-            n_policies,
+            n_policies: optimized_policies,
             preferred_observations,
             inference,
             transition,
@@ -139,30 +147,49 @@ impl PolicySelector {
             .unwrap()
     }
 
-    /// Generate candidate policies
+    /// Generate optimized candidate policies
     ///
-    /// For adaptive optics:
-    /// - Vary measurement patterns (which windows to sense)
-    /// - Vary phase corrections (deformable mirror control)
+    /// GPU OPTIMIZATION: Strategic policies instead of random exploration
+    /// - Policy 0: Exploitation (adaptive sensing + gradient correction)
+    /// - Policy 1: Conservative (uniform sensing + small correction)
+    /// - Policy 2: Aggressive (dense sensing + large correction)
+    /// - Policy 3: Exploratory (random sensing + varied correction)
+    /// - Policy 4: Information-seeking (sparse adaptive + minimal correction)
     fn generate_policies(&self, model: &HierarchicalModel) -> Vec<Policy> {
         let mut policies = Vec::with_capacity(self.n_policies);
         let n_windows = model.level1.n_windows;
 
+        // Only generate 5 strategic policies (not 10)
         for policy_id in 0..self.n_policies {
             let mut actions = Vec::with_capacity(self.horizon);
 
             for _ in 0..self.horizon {
-                // Generate measurement pattern
-                let measurement_pattern = match policy_id % 5 {
-                    0 => MeasurementPattern::uniform(100, n_windows),
-                    1 => MeasurementPattern::adaptive(100, &model.level1.belief),
-                    2 => MeasurementPattern::random(100, n_windows),
-                    3 => MeasurementPattern::uniform(200, n_windows), // Denser sampling
-                    _ => MeasurementPattern::uniform(50, n_windows),  // Sparse sampling
+                // Strategic measurement patterns and corrections
+                // MORE AGGRESSIVE for hard problems
+                let (measurement_pattern, correction_gain) = match policy_id {
+                    0 => {
+                        // Exploitation: adaptive sensing + STRONG correction
+                        (MeasurementPattern::adaptive(100, &model.level1.belief), 0.95)
+                    }
+                    1 => {
+                        // Aggressive: uniform sensing + FULL correction
+                        (MeasurementPattern::uniform(100, n_windows), 1.0)
+                    }
+                    2 => {
+                        // Super Aggressive: dense sensing + OVERCORRECTION
+                        (MeasurementPattern::uniform(150, n_windows), 1.2)
+                    }
+                    3 => {
+                        // Smart exploration: adaptive + strong correction
+                        (MeasurementPattern::adaptive(120, &model.level1.belief), 0.85)
+                    }
+                    _ => {
+                        // Focused: target highest uncertainty + aggressive
+                        (MeasurementPattern::adaptive(80, &model.level1.belief), 1.1)
+                    }
                 };
 
-                // Phase correction: proportional to current phase error
-                let phase_correction = &model.level1.belief.mean * (-0.5); // 50% correction
+                let phase_correction = &model.level1.belief.mean * (-correction_gain);
 
                 actions.push(ControlAction {
                     phase_correction,

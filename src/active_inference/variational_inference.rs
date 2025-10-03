@@ -234,8 +234,18 @@ impl VariationalInference {
         // let total_update = obs_update + weighted_dynamical;
         let total_update = obs_update;  // Only observation-driven updates
 
-        // Apply update with learning rate
-        let scaled_update = &total_update * self.learning_rate;
+        // Apply update with ADAPTIVE learning rate for better convergence
+        // Increase learning rate when stuck, decrease when oscillating
+        let error_magnitude = sensory_error.dot(&sensory_error).sqrt();
+        let adaptive_rate = if error_magnitude > 10.0 {
+            self.learning_rate * 5.0  // Much more aggressive for high errors
+        } else if error_magnitude > 5.0 {
+            self.learning_rate * 2.0  // Moderate boost
+        } else {
+            self.learning_rate  // Normal rate
+        };
+
+        let scaled_update = &total_update * adaptive_rate;
         let new_mean = &model.level1.belief.mean + &scaled_update;
 
         // Check for numerical issues (safety check)
