@@ -184,7 +184,7 @@ impl VariationalInference {
     /// - κ: learning rate
     /// - ε_sensory: bottom-up sensory error
     /// - ε_dynamical: top-down prediction error
-    fn update_beliefs(
+    pub fn update_beliefs(
         &self,
         model: &mut HierarchicalModel,
         observations: &Array1<f64>,

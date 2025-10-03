@@ -9,7 +9,9 @@ pub mod hierarchical_model;
 pub mod observation_model;
 pub mod transition_model;
 pub mod variational_inference;
+pub mod recognition_model;
 pub mod policy_selection;
+pub mod controller;
 
 pub use generative_model::{GenerativeModel, PerformanceMetrics};
 pub use hierarchical_model::{HierarchicalModel, StateSpaceLevel, GaussianBelief, GeneralizedCoordinates};
