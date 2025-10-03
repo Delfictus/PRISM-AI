@@ -66,7 +66,7 @@ None
 ---
 
 ## Notes
-- Constitution SHA-256: `ca7d9a8d1671a2d46bbcbdf72186d43c353aabc5be89e954a4d78bb5c536d966`
+- Constitution SHA-256: `203fd558105bc8fe4ddcfcfe46b386d4227d5d706aa2dff6bc3cd388192b9e77`
 - Git hooks will protect constitution from modification
 - All session context files created in .ai-context/
 
