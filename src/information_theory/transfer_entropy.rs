@@ -707,8 +707,10 @@ mod tests {
     #[test]
     fn test_transfer_entropy_independent() {
         // Test with independent random series
-        let x = Array1::from_vec(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0; 100].concat());
-        let y = Array1::from_vec(vec![0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0; 100].concat());
+        let x_rep: Vec<f64> = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].repeat(100);
+        let y_rep: Vec<f64> = vec![0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0].repeat(100);
+        let x = Array1::from_vec(x_rep);
+        let y = Array1::from_vec(y_rep);
 
         let te = TransferEntropy::default();
         let result = te.calculate(&x, &y);

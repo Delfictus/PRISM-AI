@@ -6,6 +6,7 @@
 
 pub mod mathematics;
 pub mod information_theory;
+pub mod statistical_mechanics;
 
 // Re-export key components
 pub use mathematics::{
@@ -15,6 +16,11 @@ pub use mathematics::{
 pub use information_theory::{
     TransferEntropy, TransferEntropyResult, CausalDirection,
     detect_causal_direction,
+};
+
+pub use statistical_mechanics::{
+    ThermodynamicNetwork, ThermodynamicState, NetworkConfig,
+    ThermodynamicMetrics, EvolutionResult,
 };
 
 /// Platform version information
