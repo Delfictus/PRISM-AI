@@ -1,6 +1,6 @@
 //! Active Inference Platform
 //!
-//! Constitution: Phase 1-2 - Mathematical Foundation & Active Inference
+//! Constitution: Phase 1-3 - Mathematical Foundation, Active Inference & Integration
 //! Pure software implementation of neuromorphic and quantum domain analogues
 //! with information-theoretic coupling and active inference.
 
@@ -8,6 +8,7 @@ pub mod mathematics;
 pub mod information_theory;
 pub mod statistical_mechanics;
 pub mod active_inference;
+pub mod integration;
 
 // Re-export key components
 pub use mathematics::{
@@ -28,6 +29,11 @@ pub use active_inference::{
     GenerativeModel, HierarchicalModel, StateSpaceLevel,
     ObservationModel, TransitionModel, VariationalInference,
     PolicySelector, ActiveInferenceController,
+};
+
+pub use integration::{
+    CrossDomainBridge, DomainState, CouplingStrength,
+    InformationChannel, PhaseSynchronizer,
 };
 
 /// Platform version information
