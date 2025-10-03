@@ -21,6 +21,8 @@
 #define KB 1.380649e-23  // Boltzmann constant (J/K)
 #define TWO_PI 6.28318530718
 
+extern "C" {
+
 /**
  * CUDA kernel for one step of Langevin dynamics
  *
@@ -276,7 +278,10 @@ __global__ void calculate_coherence_kernel(
     }
 }
 
-// Host API functions (C linkage for Rust FFI)
+} // end extern "C" for kernels
+
+// Host API functions (C linkage for Rust FFI - not used in PTX version)
+#if 0
 extern "C" {
 
 /**
@@ -447,3 +452,4 @@ cudaError_t thermodynamic_network_cleanup(curandState* d_rng_states) {
 }
 
 } // extern "C"
+#endif // End host API functions

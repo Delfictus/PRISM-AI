@@ -26,6 +26,7 @@
 //! - η(t): White noise (zero mean, unit variance)
 
 pub mod thermodynamic_network;
+pub mod gpu_bindings;
 
 pub use thermodynamic_network::{
     ThermodynamicNetwork,
@@ -34,3 +35,5 @@ pub use thermodynamic_network::{
     ThermodynamicMetrics,
     EvolutionResult,
 };
+
+pub use gpu_bindings::GpuThermodynamicNetwork;

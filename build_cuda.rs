@@ -12,6 +12,8 @@ fn main() {
     println!("cargo:rerun-if-changed=cuda/neuromorphic_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/quantum_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/coupling_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/thermodynamic_evolution.cu");
+    println!("cargo:rerun-if-changed=cuda/transfer_entropy.cu");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -101,11 +103,13 @@ fn main() {
     let runtime_ptx_dir = project_root.join("target").join("ptx");
     std::fs::create_dir_all(&runtime_ptx_dir).unwrap();
 
-    // Compile new neuromorphic kernels
+    // Compile all GPU kernels
     let kernels = vec![
         ("neuromorphic_kernels", "cuda/neuromorphic_kernels.cu"),
         ("quantum_kernels", "cuda/quantum_kernels.cu"),
         ("coupling_kernels", "cuda/coupling_kernels.cu"),
+        ("thermodynamic_evolution", "cuda/thermodynamic_evolution.cu"),
+        // Note: transfer_entropy.cu needs cuRAND headers, compile separately
     ];
 
     for (name, file) in &kernels {
