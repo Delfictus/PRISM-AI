@@ -11,6 +11,7 @@
 //! Performance Contract: <1ms per step for 1024 oscillators
 
 use std::f64::consts::PI;
+use crate::information_theory::TransferEntropy;
 
 /// Boltzmann constant (J/K)
 pub const KB: f64 = 1.380649e-23;
@@ -589,6 +590,162 @@ impl ThermodynamicNetwork {
     pub fn energy_history(&self) -> &[f64] {
         &self.energy_history
     }
+
+    /// Update coupling matrix based on information flow (transfer entropy)
+    ///
+    /// This implements information-gated coupling where connections are strengthened
+    /// or weakened based on causal information flow between oscillators.
+    ///
+    /// # Arguments
+    /// * `window_size` - Number of recent timesteps to analyze for TE
+    /// * `threshold` - Minimum TE value for maintaining coupling (bits)
+    ///
+    /// # Returns
+    /// Number of connections modified
+    pub fn update_coupling_from_information_flow(
+        &mut self,
+        window_size: usize,
+        threshold: f64,
+    ) -> usize {
+        if !self.config.enable_information_gating {
+            return 0;
+        }
+
+        // Need sufficient history for TE calculation
+        if self.state.phases.len() < window_size {
+            return 0;
+        }
+
+        let n = self.config.n_oscillators;
+        let mut modifications = 0;
+
+        // Create TE calculator
+        let te_calc = TransferEntropy::new(5, 1, 1); // 5 bins, k=1, l=1
+
+        // For computational efficiency, we sample pairs rather than computing all O(N²)
+        // In a production system, this would be done on GPU
+        let sample_pairs = (n * n / 100).max(10).min(n * n); // 1% sampling or at least 10 pairs
+
+        for _ in 0..sample_pairs {
+            // Randomly select pair (i, j)
+            self.rng_state = Self::lcg_next(self.rng_state);
+            let i = (self.rng_state % n as u64) as usize;
+            self.rng_state = Self::lcg_next(self.rng_state);
+            let j = (self.rng_state % n as u64) as usize;
+
+            if i == j {
+                continue;
+            }
+
+            // Extract recent phase history for oscillators i and j
+            // In real implementation, we'd track this more efficiently
+            // Here we use a simplified approach for demonstration
+
+            // Convert phases to time series (using recent velocity as proxy for dynamics)
+            // This is a simplified version - full implementation would track phase history
+            let te_value = self.estimate_te_from_current_state(i, j, &te_calc);
+
+            // Update coupling based on TE
+            let old_coupling = self.state.coupling_matrix[i][j];
+
+            if te_value > threshold {
+                // Strengthen coupling proportional to information flow
+                let new_coupling = (old_coupling + 0.1 * te_value).min(1.0);
+                self.state.coupling_matrix[i][j] = new_coupling;
+                if (new_coupling - old_coupling).abs() > 1e-6 {
+                    modifications += 1;
+                }
+            } else {
+                // Weaken coupling (information flow too low)
+                let new_coupling = (old_coupling * 0.9).max(0.0);
+                self.state.coupling_matrix[i][j] = new_coupling;
+                if (new_coupling - old_coupling).abs() > 1e-6 {
+                    modifications += 1;
+                }
+            }
+        }
+
+        modifications
+    }
+
+    /// Estimate transfer entropy from current oscillator states
+    ///
+    /// This is a simplified estimator based on phase coherence and velocity correlation.
+    /// Full implementation would use time-series history with proper TE calculation.
+    fn estimate_te_from_current_state(
+        &self,
+        i: usize,
+        j: usize,
+        _te_calc: &TransferEntropy,
+    ) -> f64 {
+        // Simplified TE estimation based on phase and velocity relationships
+        // In full implementation, this would use actual time-series TE calculation
+
+        let phase_diff = (self.state.phases[j] - self.state.phases[i]).abs();
+        let velocity_corr = self.state.velocities[i] * self.state.velocities[j];
+
+        // Heuristic: TE is high when phases are synchronized and velocities correlated
+        let phase_coherence = (PI - phase_diff.min(2.0 * PI - phase_diff)) / PI;
+        let velocity_coherence = velocity_corr.abs() /
+            (self.state.velocities[i].abs().max(1e-10) *
+             self.state.velocities[j].abs().max(1e-10));
+
+        // Approximate TE in bits (0-1 range)
+        (phase_coherence * 0.5 + velocity_coherence.min(1.0) * 0.5).min(1.0)
+    }
+
+    /// Get coupling matrix for analysis
+    pub fn coupling_matrix(&self) -> &Vec<Vec<f64>> {
+        &self.state.coupling_matrix
+    }
+
+    /// Calculate average coupling strength
+    pub fn average_coupling(&self) -> f64 {
+        let n = self.config.n_oscillators;
+        let mut sum = 0.0;
+        let mut count = 0;
+
+        for i in 0..n {
+            for j in 0..n {
+                if i != j {
+                    sum += self.state.coupling_matrix[i][j];
+                    count += 1;
+                }
+            }
+        }
+
+        if count > 0 {
+            sum / count as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Analyze causal structure using transfer entropy
+    ///
+    /// Returns a matrix where entry (i,j) represents TE from oscillator j to i
+    ///
+    /// # Note
+    /// This is a placeholder for full TE-based analysis. Full implementation
+    /// would integrate with Phase 1 Task 1.2 transfer entropy calculator.
+    pub fn analyze_causal_structure(&self) -> Vec<Vec<f64>> {
+        let n = self.config.n_oscillators;
+        let mut te_matrix = vec![vec![0.0; n]; n];
+
+        // Create TE calculator
+        let te_calc = TransferEntropy::new(5, 1, 1);
+
+        // This would use actual time-series data in full implementation
+        for i in 0..n {
+            for j in 0..n {
+                if i != j {
+                    te_matrix[i][j] = self.estimate_te_from_current_state(i, j, &te_calc);
+                }
+            }
+        }
+
+        te_matrix
+    }
 }
 
 #[cfg(test)]
@@ -644,5 +801,83 @@ mod tests {
         let energy_change = (final_energy - initial_energy).abs() / initial_energy.abs();
         assert!(energy_change < 0.005,
             "Energy not conserved: relative change = {}", energy_change);
+    }
+
+    #[test]
+    fn test_information_gated_coupling() {
+        let config = NetworkConfig {
+            n_oscillators: 32,
+            temperature: 300.0,
+            damping: 0.1,
+            coupling_strength: 0.5,
+            enable_information_gating: true,
+            ..Default::default()
+        };
+        let mut network = ThermodynamicNetwork::new(config);
+
+        // Run for some steps to establish dynamics
+        for _ in 0..50 {
+            network.step();
+        }
+
+        let initial_avg_coupling = network.average_coupling();
+
+        // Update coupling based on information flow
+        let modifications = network.update_coupling_from_information_flow(10, 0.3);
+
+        let final_avg_coupling = network.average_coupling();
+
+        // Should have modified some connections
+        assert!(modifications > 0,
+            "Information gating did not modify any connections");
+
+        // Coupling should be within valid range [0, 1]
+        assert!(final_avg_coupling >= 0.0 && final_avg_coupling <= 1.0,
+            "Average coupling out of valid range: {}", final_avg_coupling);
+
+        println!("Initial avg coupling: {:.4}", initial_avg_coupling);
+        println!("Final avg coupling: {:.4}", final_avg_coupling);
+        println!("Connections modified: {}", modifications);
+    }
+
+    #[test]
+    fn test_causal_structure_analysis() {
+        let config = NetworkConfig {
+            n_oscillators: 16,
+            temperature: 300.0,
+            damping: 0.1,
+            coupling_strength: 0.5,
+            enable_information_gating: true,
+            ..Default::default()
+        };
+        let mut network = ThermodynamicNetwork::new(config);
+
+        // Run to establish dynamics
+        for _ in 0..100 {
+            network.step();
+        }
+
+        // Analyze causal structure
+        let te_matrix = network.analyze_causal_structure();
+
+        // Verify matrix dimensions
+        assert_eq!(te_matrix.len(), 16);
+        assert_eq!(te_matrix[0].len(), 16);
+
+        // Verify TE values are in valid range [0, 1]
+        for i in 0..16 {
+            for j in 0..16 {
+                assert!(te_matrix[i][j] >= 0.0 && te_matrix[i][j] <= 1.0,
+                    "TE[{},{}] = {} out of range", i, j, te_matrix[i][j]);
+            }
+        }
+
+        // Diagonal should be zero (no self-information transfer in this model)
+        for i in 0..16 {
+            assert_eq!(te_matrix[i][i], 0.0,
+                "Self TE should be zero: TE[{},{}] = {}", i, i, te_matrix[i][i]);
+        }
+
+        println!("Causal structure analysis completed successfully");
     }
 }
