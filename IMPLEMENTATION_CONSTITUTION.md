@@ -526,9 +526,9 @@ This constitution can only be amended through:
 4. Get approval before proceeding
 
 ### Emergency Contacts:
-- Technical Lead: [TBD]
-- Scientific Advisor: [TBD]
-- Project Manager: [TBD]
+- Technical Lead: [Benjamin Vaccaro - BV@Delfictus.com]
+- Scientific Advisor: [Ididia Serfaty - IS@Delfictus.com]
+- Project Manager: [Ididia Serfaty - IS@Delfictus.com]
 
 ---
 
