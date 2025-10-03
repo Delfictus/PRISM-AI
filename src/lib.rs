@@ -10,6 +10,7 @@ pub mod statistical_mechanics;
 pub mod active_inference;
 pub mod integration;
 pub mod resilience;
+pub mod optimization;
 
 // Re-export key components
 pub use mathematics::{
@@ -39,8 +40,13 @@ pub use integration::{
 
 pub use resilience::{
     HealthMonitor, ComponentHealth, HealthStatus, SystemState,
-    CircuitBreaker, CircuitState, CircuitBreakerConfig,
-    CheckpointManager, Checkpointable, CheckpointMetadata, StorageBackend,
+    CircuitBreaker, CircuitState, CircuitBreakerConfig, CircuitBreakerError,
+    CheckpointManager, Checkpointable, CheckpointMetadata, StorageBackend, CheckpointError,
+};
+
+pub use optimization::{
+    PerformanceTuner, TuningProfile, SearchAlgorithm, SearchSpace, PerformanceMetrics,
+    KernelTuner, GpuProperties, KernelConfig, OccupancyInfo,
 };
 
 /// Platform version information
