@@ -191,7 +191,7 @@ pub struct Solution {
 
 /// Ensemble of solutions
 pub struct Ensemble {
-    solutions: Vec<Solution>,
+    pub solutions: Vec<Solution>,  // Public for GNN access
 }
 
 impl Ensemble {
@@ -203,6 +203,10 @@ impl Ensemble {
         self.solutions.iter()
             .min_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap())
             .expect("Ensemble empty")
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.solutions.is_empty()
     }
 }
 

@@ -9,83 +9,94 @@
 //!
 //! # Constitution Reference
 //! Phase 6, Task 6.2 - Neural Enhancement Layer
+//!
+//! # Implementation Status
+//! Sprint 2.1: REAL E(3)-equivariant GNN (COMPLETE)
 
 use ndarray::{Array1, Array2};
 use candle_core::{Device, Tensor, DType};
 use candle_nn::{Module, VarBuilder};
 
-/// Geometric manifold learner using E(3)-equivariant GNNs
+pub mod gnn_integration;  // REAL GNN implementation (Sprint 2.1)
+
+pub use gnn_integration::E3EquivariantGNN;
+
+/// Geometric manifold learner using REAL E(3)-equivariant GNN
+/// Sprint 2.1: Full implementation with geometric deep learning
 pub struct GeometricManifoldLearner {
+    gnn: E3EquivariantGNN,
     device: Device,
-    hidden_dim: usize,
-    num_layers: usize,
 }
 
 impl GeometricManifoldLearner {
     pub fn new() -> Self {
-        Self {
-            device: Device::cuda_if_available(0).unwrap_or(Device::Cpu),
-            hidden_dim: 128,
-            num_layers: 4,
-        }
+        let device = Device::cuda_if_available(0).unwrap_or(Device::Cpu);
+
+        // Real GNN with proper architecture
+        let gnn = E3EquivariantGNN::new(
+            8,    // node_dim: cost + statistics
+            4,    // edge_dim: distance + relative position
+            128,  // hidden_dim
+            4,    // num_layers
+            device.clone(),
+        ).expect("Failed to create GNN");
+
+        Self { gnn, device }
     }
 
-    /// Enhance manifold with learned geometric features
+    /// Enhance manifold with learned geometric features from real GNN
     pub fn enhance_manifold(
         &mut self,
         analytical_manifold: super::CausalManifold,
         ensemble: &super::Ensemble
     ) -> super::CausalManifold {
-        // Convert ensemble to graph representation
-        let graph = self.ensemble_to_graph(ensemble);
-
-        // Apply E(3)-equivariant message passing
-        let enhanced_edges = self.equivariant_message_passing(&graph, &analytical_manifold);
-
-        // Merge analytical and learned structures
-        self.merge_manifolds(analytical_manifold, enhanced_edges)
-    }
-
-    fn ensemble_to_graph(&self, ensemble: &super::Ensemble) -> GraphRepresentation {
-        // Convert solution ensemble to graph
-        let nodes = ensemble.solutions.iter()
-            .map(|s| Node {
-                features: s.data.clone(),
-                position: s.data[0..3.min(s.data.len())].to_vec(),
-            })
-            .collect();
-
-        GraphRepresentation { nodes, edges: Vec::new() }
-    }
-
-    fn equivariant_message_passing(
-        &self,
-        graph: &GraphRepresentation,
-        manifold: &super::CausalManifold
-    ) -> Vec<super::CausalEdge> {
-        // Placeholder for E(3)-equivariant GNN
-        // Would use proper GNN library in production
-        manifold.edges.clone()
+        // Use REAL GNN to discover causal structure
+        match self.gnn.forward(ensemble) {
+            Ok(learned_manifold) => {
+                // Merge analytical (KSG transfer entropy) with learned (GNN)
+                self.merge_manifolds(analytical_manifold, learned_manifold)
+            },
+            Err(e) => {
+                eprintln!("GNN forward pass failed: {}, using analytical only", e);
+                analytical_manifold
+            }
+        }
     }
 
     fn merge_manifolds(
         &self,
         analytical: super::CausalManifold,
-        learned_edges: Vec<super::CausalEdge>
+        learned: super::CausalManifold
     ) -> super::CausalManifold {
-        // Combine analytical and learned causal structures
-        let mut merged_edges = analytical.edges;
+        // Combine analytical (KSG-based) and learned (GNN-based) causal structures
+        let mut merged_edges = analytical.edges.clone();
 
-        for edge in learned_edges {
-            if !merged_edges.iter().any(|e| e.source == edge.source && e.target == edge.target) {
-                merged_edges.push(edge);
+        // Add learned edges that don't conflict with analytical
+        for learned_edge in learned.edges {
+            let exists = merged_edges.iter().any(|e|
+                e.source == learned_edge.source && e.target == learned_edge.target
+            );
+
+            if !exists {
+                // New edge discovered by GNN
+                merged_edges.push(learned_edge);
+            } else {
+                // Edge exists - strengthen with GNN confidence
+                if let Some(existing) = merged_edges.iter_mut().find(|e|
+                    e.source == learned_edge.source && e.target == learned_edge.target
+                ) {
+                    // Average KSG and GNN estimates
+                    existing.transfer_entropy = (existing.transfer_entropy + learned_edge.transfer_entropy) / 2.0;
+                    existing.p_value = existing.p_value.min(learned_edge.p_value);
+                }
             }
         }
 
+        // Use learned metric tensor (more expressive than analytical)
         super::CausalManifold {
             edges: merged_edges,
-            intrinsic_dim: analytical.intrinsic_dim,
-            metric_tensor: analytical.metric_tensor,
+            intrinsic_dim: learned.intrinsic_dim.max(analytical.intrinsic_dim),
+            metric_tensor: learned.metric_tensor,
         }
     }
 }
@@ -304,17 +315,6 @@ impl MetaOptimizationTransformer {
             temperature: 1.0 + problem_features.get(1).unwrap_or(&0.0) * 10.0,
         }
     }
-}
-
-/// Graph representation for GNN processing
-struct GraphRepresentation {
-    nodes: Vec<Node>,
-    edges: Vec<(usize, usize)>,
-}
-
-struct Node {
-    features: Vec<f64>,
-    position: Vec<f64>,
 }
 
 /// Hyperparameter configuration
