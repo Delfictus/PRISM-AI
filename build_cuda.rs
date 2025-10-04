@@ -14,6 +14,7 @@ fn main() {
     println!("cargo:rerun-if-changed=cuda/coupling_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/thermodynamic_evolution.cu");
     println!("cargo:rerun-if-changed=cuda/transfer_entropy.cu");
+    println!("cargo:rerun-if-changed=src/cma/cuda/ksg_kernels.cu");  // Phase 6
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -109,6 +110,7 @@ fn main() {
         ("quantum_kernels", "cuda/quantum_kernels.cu"),
         ("coupling_kernels", "cuda/coupling_kernels.cu"),
         ("thermodynamic_evolution", "cuda/thermodynamic_evolution.cu"),
+        ("ksg_kernels", "src/cma/cuda/ksg_kernels.cu"),  // Phase 6: KSG estimator
         // Note: transfer_entropy.cu needs cuRAND headers, compile separately
     ];
 

@@ -2,29 +2,55 @@
 //!
 //! # Purpose
 //! Discovers causal manifold structure from thermodynamic ensemble
-//! using transfer entropy with KSG estimator and FDR control.
+//! using REAL transfer entropy with KSG estimator and FDR control.
 //!
 //! # Constitution Reference
 //! Phase 6, Task 6.1, Stage 2 - Causal Structure Discovery
+//! Phase 6 Implementation Constitution - Sprint 1.2
 
 use ndarray::{Array2, Array1};
 use std::collections::HashMap;
-use crate::information_theory::transfer_entropy::TransferEntropy;
+use anyhow::Result;
+
+use super::transfer_entropy_ksg::{KSGEstimator, TimeSeries};
+use super::transfer_entropy_gpu::GpuKSGEstimator;
 
 /// Causal manifold discovery with false discovery rate control
 pub struct CausalManifoldDiscovery {
     fdr_threshold: f64,
     ksg_neighbors: usize,
     min_transfer_entropy: f64,
+    /// Real KSG estimator (CPU)
+    ksg_estimator: KSGEstimator,
+    /// GPU-accelerated KSG (optional)
+    gpu_ksg: Option<GpuKSGEstimator>,
 }
 
 impl CausalManifoldDiscovery {
-    /// Create new causal discovery engine
+    /// Create new causal discovery engine with REAL KSG estimator
     pub fn new(fdr_threshold: f64) -> Self {
+        let ksg_neighbors = 4;
+        let embed_dim = 3;
+        let delay = 1;
+
+        // Initialize real KSG estimator
+        let ksg_estimator = KSGEstimator::new(ksg_neighbors, embed_dim, delay);
+
+        // Try to initialize GPU version
+        let gpu_ksg = GpuKSGEstimator::new(ksg_neighbors, embed_dim, delay).ok();
+
+        if gpu_ksg.is_some() {
+            println!("✓ Causal discovery initialized with GPU-accelerated KSG");
+        } else {
+            println!("✓ Causal discovery initialized with CPU KSG");
+        }
+
         Self {
             fdr_threshold,
-            ksg_neighbors: 4, // KSG estimator default
+            ksg_neighbors,
             min_transfer_entropy: 0.01,
+            ksg_estimator,
+            gpu_ksg,
         }
     }
 
@@ -54,24 +80,42 @@ impl CausalManifoldDiscovery {
         let n_vars = ensemble.solutions[0].data.len();
 
         // Extract time series from ensemble
-        let time_series = self.extract_time_series(ensemble);
+        let time_series_data = self.extract_time_series(ensemble);
 
-        // Compute pairwise transfer entropies with KSG estimator
+        // Convert to TimeSeries objects for REAL KSG estimator
+        let time_series: Vec<TimeSeries> = time_series_data.into_iter()
+            .enumerate()
+            .map(|(i, data)| TimeSeries::new(data, format!("var_{}", i)))
+            .collect();
+
+        println!("Computing transfer entropies with REAL KSG estimator...");
+
+        // Compute pairwise transfer entropies using REAL implementation
         for i in 0..n_vars {
             for j in 0..n_vars {
                 if i != j {
-                    let (te_value, p_value) = self.ksg_transfer_entropy(
-                        &time_series[i],
-                        &time_series[j]
-                    );
+                    // Use GPU if available, otherwise CPU
+                    let result = if let Some(ref gpu_ksg) = self.gpu_ksg {
+                        gpu_ksg.compute_te_gpu(&time_series[i], &time_series[j]).ok()
+                    } else {
+                        self.ksg_estimator.compute_te(&time_series[i], &time_series[j]).ok()
+                    };
 
-                    if te_value > self.min_transfer_entropy {
-                        te_matrix.insert((i, j), (te_value, p_value));
+                    if let Some(te_result) = result {
+                        if te_result.te_value > self.min_transfer_entropy {
+                            te_matrix.insert((i, j), (te_result.te_value, te_result.p_value));
+
+                            if te_result.significant {
+                                println!("  Found significant causal edge: {} → {} (TE={:.4}, p={:.4})",
+                                         i, j, te_result.te_value, te_result.p_value);
+                            }
+                        }
                     }
                 }
             }
         }
 
+        println!("✓ Computed {} transfer entropy pairs", te_matrix.len());
         te_matrix
     }
 

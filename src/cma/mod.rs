@@ -21,7 +21,10 @@ pub mod quantum_annealer;
 pub mod neural;
 pub mod guarantees;
 pub mod applications;
-pub mod gpu_integration;  // REAL GPU integration
+pub mod gpu_integration;  // REAL GPU integration (Sprint 1.1)
+pub mod transfer_entropy_ksg;  // REAL KSG estimator (Sprint 1.2)
+pub mod transfer_entropy_gpu;  // GPU-accelerated TE (Sprint 1.2)
+pub mod cuda;  // CUDA kernels
 
 // Re-exports for convenience
 pub use ensemble_generator::EnhancedEnsembleGenerator;
