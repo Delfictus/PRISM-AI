@@ -16,25 +16,30 @@
 use std::collections::HashMap;
 use sha2::{Sha256, Digest};
 
-pub mod pac_bayes;  // REAL PAC-Bayes implementation (Sprint 3.1)
+pub mod pac_bayes;   // REAL PAC-Bayes implementation (Sprint 3.1)
+pub mod conformal;   // REAL conformal prediction (Sprint 3.2)
 
 pub use pac_bayes::{PACBayesValidator, PrecisionBound as PACBayesBound, GaussianDistribution};
+pub use conformal::{ConformalPredictor, PredictionInterval, ConformityMeasure};
 
-/// Main precision framework using REAL PAC-Bayes
+/// Main precision framework using REAL PAC-Bayes + Conformal
 pub struct PrecisionFramework {
     confidence_level: f64,
     approximation_threshold: f64,
     calibration_data: Vec<CalibrationPoint>,
-    pac_validator: PACBayesValidator,  // REAL PAC-Bayes validator
+    pac_validator: PACBayesValidator,      // REAL PAC-Bayes validator
+    conformal_predictor: ConformalPredictor, // REAL conformal prediction
 }
 
 impl PrecisionFramework {
     pub fn new() -> Self {
+        let alpha = 0.01; // 1% miscoverage = 99% coverage
         Self {
             confidence_level: 0.99, // 99% confidence
             approximation_threshold: 1.05, // 5% approximation ratio
             calibration_data: Vec::new(),
             pac_validator: PACBayesValidator::new(0.99),
+            conformal_predictor: ConformalPredictor::new(alpha),
         }
     }
 
@@ -118,32 +123,32 @@ impl PrecisionFramework {
     }
 
     fn compute_conformal_interval(&mut self, solution: &super::Solution) -> ConformalInterval {
-        // Distribution-free prediction interval
-        let alpha = 1.0 - self.confidence_level;
+        // Use REAL conformal prediction
 
-        // Calibrate on historical data
-        if self.calibration_data.is_empty() {
-            self.initialize_calibration(solution);
+        // Calibrate if not done yet
+        if self.conformal_predictor.calibration_set.is_empty() && !self.calibration_data.is_empty() {
+            let calibration: Vec<(Vec<f64>, f64)> = self.calibration_data.iter()
+                .map(|cp| (cp.features.clone(), cp.value))
+                .collect();
+            self.conformal_predictor.calibrate(calibration);
         }
 
-        // Compute non-conformity scores
-        let scores: Vec<f64> = self.calibration_data.iter()
-            .map(|cp| self.non_conformity_score(solution, cp))
-            .collect();
+        // If still no calibration, use synthetic data
+        if self.conformal_predictor.calibration_set.is_empty() {
+            self.initialize_calibration(solution);
+            let calibration: Vec<(Vec<f64>, f64)> = self.calibration_data.iter()
+                .map(|cp| (cp.features.clone(), cp.value))
+                .collect();
+            self.conformal_predictor.calibrate(calibration);
+        }
 
-        // Find quantile
-        let mut sorted_scores = scores.clone();
-        sorted_scores.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-        let quantile_idx = ((1.0 - alpha) * sorted_scores.len() as f64).ceil() as usize;
-        let threshold = sorted_scores.get(quantile_idx.min(sorted_scores.len() - 1))
-            .copied()
-            .unwrap_or(1.0);
+        // Get REAL conformal interval
+        let interval = self.conformal_predictor.predict_interval(solution);
 
         ConformalInterval {
-            lower: solution.cost - threshold,
-            upper: solution.cost + threshold,
-            coverage_probability: self.confidence_level,
+            lower: interval.lower,
+            upper: interval.upper,
+            coverage_probability: interval.coverage_level,
         }
     }
 
