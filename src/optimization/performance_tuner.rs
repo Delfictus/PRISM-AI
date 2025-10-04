@@ -288,7 +288,7 @@ mod tests {
                 base_perf * block_factor
             };
 
-            let metrics = tuner.run_tuning_session(workload_id, search_space, evaluator);
+            let metrics = tuner.run_tuning_session(workload_id, search_space, &evaluator);
 
             println!("Tuning Results:");
             println!("  Best throughput: {:.2} ops/sec", metrics.best_throughput);
@@ -315,7 +315,7 @@ mod tests {
 
             let evaluator = |_: &KernelConfig| 1000.0;
 
-            tuner.run_tuning_session(workload_id, search_space, evaluator);
+            tuner.run_tuning_session(workload_id, search_space, &evaluator);
 
             assert!(tuner.is_tuned(workload_id));
             assert!(tuner.get_profile(workload_id).is_some());

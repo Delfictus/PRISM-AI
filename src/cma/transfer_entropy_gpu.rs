@@ -370,7 +370,7 @@ mod tests {
         // Compare CPU vs GPU performance
         use std::time::Instant;
 
-        let cpu_ksg = super::transfer_entropy_ksg::KSGEstimator::new(4, 2, 1);
+        let cpu_ksg = crate::cma::transfer_entropy_ksg::KSGEstimator::new(4, 2, 1);
 
         // Large time series
         let n = 1000;

@@ -299,7 +299,7 @@ mod tests {
         if let Ok(buffer) = PinnedBuffer::new(buffer_size, 0) {
             assert_eq!(buffer.size, buffer_size);
             assert_eq!(buffer.id, 0);
-            assert!(!buffer.ptr.is_null());
+            assert_eq!(buffer.data.len(), buffer_size);
         }
     }
 
