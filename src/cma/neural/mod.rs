@@ -17,11 +17,13 @@ use ndarray::{Array1, Array2};
 use candle_core::{Device, Tensor, DType};
 use candle_nn::{Module, VarBuilder};
 
-pub mod gnn_integration;  // REAL GNN implementation (Sprint 2.1)
-pub mod diffusion;         // REAL diffusion model (Sprint 2.2)
+pub mod gnn_integration;   // REAL GNN implementation (Sprint 2.1)
+pub mod diffusion;          // REAL diffusion model (Sprint 2.2)
+pub mod neural_quantum;     // REAL neural quantum states (Sprint 2.3)
 
 pub use gnn_integration::E3EquivariantGNN;
 pub use diffusion::ConsistencyDiffusion;
+pub use neural_quantum::{NeuralQuantumState as NeuralQuantumStateImpl, VariationalMonteCarlo};
 
 /// Geometric manifold learner using REAL E(3)-equivariant GNN
 /// Sprint 2.1: Full implementation with geometric deep learning
@@ -154,117 +156,53 @@ impl DiffusionRefinement {
     }
 }
 
-/// Neural quantum state representation
+/// Neural quantum state using REAL variational Monte Carlo
+/// Sprint 2.3: Full VMC with ResNet wavefunction
 pub struct NeuralQuantumState {
-    device: Device,
-    hidden_dim: usize,
-    num_layers: usize,
+    vmc: VariationalMonteCarlo,
+    solution_dim: usize,
 }
 
 impl NeuralQuantumState {
     pub fn new() -> Self {
+        let device = Device::cuda_if_available(0).unwrap_or(Device::Cpu);
+        let solution_dim = 128; // Default, will adapt
+        let hidden_dim = 256;
+        let num_layers = 6;
+
+        let vmc = VariationalMonteCarlo::new(
+            solution_dim,
+            hidden_dim,
+            num_layers,
+            device,
+        ).expect("Failed to create VMC");
+
         Self {
-            device: Device::cuda_if_available(0).unwrap_or(Device::Cpu),
-            hidden_dim: 256,
-            num_layers: 6,
+            vmc,
+            solution_dim,
         }
     }
 
-    /// Optimize using neural wavefunction ansatz
+    /// Optimize using REAL neural wavefunction with variational Monte Carlo
     pub fn optimize_with_manifold(
         &mut self,
         manifold: &super::CausalManifold,
         initial: &super::Solution
     ) -> super::Solution {
-        // Variational Monte Carlo with neural ansatz
-        let mut current = initial.data.clone();
-        let learning_rate = 0.01;
-
-        for iteration in 0..100 {
-            // Sample from neural wavefunction
-            let samples = self.sample_wavefunction(&current, 100);
-
-            // Compute energy expectation
-            let energy = self.compute_energy(&samples, manifold);
-
-            // Update parameters via stochastic reconfiguration
-            current = self.stochastic_reconfiguration(current, samples, energy, learning_rate);
-
-            if iteration % 10 == 0 && energy < initial.cost * 0.5 {
-                break; // Early stopping if significant improvement
+        // Use real neural quantum state implementation
+        match self.vmc.neural_state.optimize_with_manifold(manifold, initial) {
+            Ok(optimized) => {
+                if optimized.cost < initial.cost {
+                    optimized
+                } else {
+                    initial.clone()
+                }
+            },
+            Err(e) => {
+                eprintln!("Neural quantum optimization failed: {}, using initial", e);
+                initial.clone()
             }
         }
-
-        super::Solution {
-            data: current,
-            cost: self.evaluate_solution(&current, manifold),
-        }
-    }
-
-    fn sample_wavefunction(&self, params: &[f64], n_samples: usize) -> Vec<Vec<f64>> {
-        // Sample configurations from neural wavefunction
-        (0..n_samples)
-            .map(|i| {
-                params.iter()
-                    .map(|&p| p + (fastrand::f64() - 0.5) * 0.1 * (i as f64 / n_samples as f64))
-                    .collect()
-            })
-            .collect()
-    }
-
-    fn compute_energy(&self, samples: &[Vec<f64>], manifold: &super::CausalManifold) -> f64 {
-        // Compute energy expectation value
-        samples.iter()
-            .map(|s| self.evaluate_solution(s, manifold))
-            .sum::<f64>() / samples.len() as f64
-    }
-
-    fn stochastic_reconfiguration(
-        &self,
-        current: Vec<f64>,
-        samples: Vec<Vec<f64>>,
-        energy: f64,
-        learning_rate: f64
-    ) -> Vec<f64> {
-        // Simplified stochastic reconfiguration update
-        let gradient = self.compute_gradient(&current, &samples, energy);
-
-        current.iter()
-            .zip(gradient.iter())
-            .map(|(&c, &g)| c - learning_rate * g)
-            .collect()
-    }
-
-    fn compute_gradient(&self, _current: &[f64], samples: &[Vec<f64>], target_energy: f64) -> Vec<f64> {
-        // Compute gradient of energy with respect to parameters
-        let dim = samples[0].len();
-        let mut gradient = vec![0.0; dim];
-
-        for sample in samples {
-            let sample_energy = sample.iter().map(|x| x * x).sum::<f64>();
-            let delta = sample_energy - target_energy;
-
-            for i in 0..dim {
-                gradient[i] += delta * sample[i];
-            }
-        }
-
-        gradient.iter().map(|g| g / samples.len() as f64).collect()
-    }
-
-    fn evaluate_solution(&self, solution: &[f64], manifold: &super::CausalManifold) -> f64 {
-        // Evaluate solution quality with manifold constraints
-        let base_cost: f64 = solution.iter().map(|x| x * x).sum();
-
-        // Add causal constraint penalties
-        let mut penalty = 0.0;
-        for edge in &manifold.edges {
-            if edge.source < solution.len() && edge.target < solution.len() {
-                penalty += (solution[edge.source] - solution[edge.target]).abs() * edge.transfer_entropy;
-            }
-        }
-
-        base_cost + penalty
     }
 }
 
