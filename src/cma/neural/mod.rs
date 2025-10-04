@@ -18,8 +18,10 @@ use candle_core::{Device, Tensor, DType};
 use candle_nn::{Module, VarBuilder};
 
 pub mod gnn_integration;  // REAL GNN implementation (Sprint 2.1)
+pub mod diffusion;         // REAL diffusion model (Sprint 2.2)
 
 pub use gnn_integration::E3EquivariantGNN;
+pub use diffusion::ConsistencyDiffusion;
 
 /// Geometric manifold learner using REAL E(3)-equivariant GNN
 /// Sprint 2.1: Full implementation with geometric deep learning
@@ -101,77 +103,54 @@ impl GeometricManifoldLearner {
     }
 }
 
-/// Diffusion model for solution refinement
+/// Diffusion model for solution refinement using REAL U-Net
+/// Sprint 2.2: Full DDPM implementation with consistency modeling
 pub struct DiffusionRefinement {
-    device: Device,
-    noise_schedule: Vec<f64>,
-    num_diffusion_steps: usize,
+    diffusion: ConsistencyDiffusion,
+    solution_dim: usize,
 }
 
 impl DiffusionRefinement {
     pub fn new() -> Self {
-        // Linear noise schedule
-        let num_steps = 100;
-        let noise_schedule = (0..num_steps)
-            .map(|i| i as f64 / num_steps as f64)
-            .collect();
+        let device = Device::cuda_if_available(0).unwrap_or(Device::Cpu);
+        let solution_dim = 128; // Default, will adapt
+        let hidden_dim = 256;
+        let num_steps = 50; // Fewer steps for faster inference
+
+        let diffusion = ConsistencyDiffusion::new(
+            solution_dim,
+            hidden_dim,
+            num_steps,
+            device,
+        ).expect("Failed to create diffusion model");
 
         Self {
-            device: Device::cuda_if_available(0).unwrap_or(Device::Cpu),
-            noise_schedule,
-            num_diffusion_steps: num_steps,
+            diffusion,
+            solution_dim,
         }
     }
 
-    /// Refine solution using consistency model
+    /// Refine solution using real consistency diffusion model
     pub fn refine(
         &mut self,
         solution: super::Solution,
         manifold: &super::CausalManifold
     ) -> super::Solution {
-        // Apply reverse diffusion process
-        let mut refined_data = solution.data.clone();
-
-        for t in (0..self.num_diffusion_steps).rev() {
-            let noise_level = self.noise_schedule[t];
-            refined_data = self.denoise_step(refined_data, noise_level, manifold);
-        }
-
-        // Project onto manifold
-        let projected = self.project_to_manifold(&refined_data, manifold);
-
-        super::Solution {
-            data: projected,
-            cost: solution.cost * 0.9, // Assume 10% improvement
-        }
-    }
-
-    fn denoise_step(
-        &self,
-        data: Vec<f64>,
-        noise_level: f64,
-        manifold: &super::CausalManifold
-    ) -> Vec<f64> {
-        // Simplified denoising step
-        data.iter()
-            .map(|&x| x * (1.0 - noise_level * 0.1))
-            .collect()
-    }
-
-    fn project_to_manifold(&self, data: &[f64], manifold: &super::CausalManifold) -> Vec<f64> {
-        // Project using metric tensor
-        let mut projected = data.to_vec();
-
-        for edge in &manifold.edges {
-            if edge.source < projected.len() && edge.target < projected.len() {
-                // Soft constraint based on causal strength
-                let avg = (projected[edge.source] + projected[edge.target]) / 2.0;
-                projected[edge.source] = projected[edge.source] * 0.9 + avg * 0.1;
-                projected[edge.target] = projected[edge.target] * 0.9 + avg * 0.1;
+        match self.diffusion.refine(&solution, manifold) {
+            Ok(refined) => {
+                // Verify improvement
+                if refined.cost < solution.cost {
+                    refined
+                } else {
+                    // If no improvement, return original
+                    solution
+                }
+            },
+            Err(e) => {
+                eprintln!("Diffusion refinement failed: {}, returning original", e);
+                solution
             }
         }
-
-        projected
     }
 }
 
