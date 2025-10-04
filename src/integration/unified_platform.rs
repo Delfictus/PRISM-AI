@@ -20,15 +20,14 @@ use std::time::Instant;
 use ndarray::{Array1, Array2};
 use anyhow::{Result, anyhow};
 
-use crate::information_theory::{TransferEntropy, TransferEntropyResult};
+use crate::information_theory::TransferEntropy;
 use crate::statistical_mechanics::{ThermodynamicNetwork, ThermodynamicState, NetworkConfig};
 use crate::active_inference::{
-    HierarchicalModel, GenerativeModel, VariationalInference,
+    HierarchicalModel, VariationalInference,
     PolicySelector, ActiveInferenceController, SensingStrategy,
     ObservationModel, TransitionModel,
 };
 use super::cross_domain_bridge::{CrossDomainBridge, BridgeMetrics};
-use super::synchronization::{PhaseSynchronizer, SynchronizationMetrics};
 
 /// Input data for the unified platform
 #[derive(Debug, Clone)]

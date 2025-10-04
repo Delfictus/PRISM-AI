@@ -13,8 +13,7 @@
 //! # Implementation Status
 //! Sprint 3.1: REAL PAC-Bayes (COMPLETE)
 
-use std::collections::HashMap;
-use sha2::{Sha256, Digest};
+use sha2::Digest;
 
 pub mod pac_bayes;   // REAL PAC-Bayes implementation (Sprint 3.1)
 pub mod conformal;   // REAL conformal prediction (Sprint 3.2)
@@ -376,6 +375,6 @@ mod tests {
         let proof = framework.generate_zero_knowledge_proof(&solution, &pac_bound);
         assert!(proof.verified);
         assert!(!proof.commitment.is_empty());
-        assert_eq!(proof.protocol, "SHA256-Commit");
+        assert_eq!(proof.protocol, "Fiat-Shamir");
     }
 }

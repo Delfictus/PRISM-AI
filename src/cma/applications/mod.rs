@@ -11,7 +11,7 @@
 
 use std::time::{Duration, Instant};
 use crate::cma::{PrecisionSolution, Solution, CausalManifold};
-use crate::cma::guarantees::{PrecisionGuarantee, ConformalInterval};
+use crate::cma::guarantees::PrecisionGuarantee;
 
 /// High-frequency trading adapter with microsecond latency
 pub struct HFTAdapter {
@@ -323,7 +323,7 @@ impl MaterialsAdapter {
             for edge in &m.edges {
                 // Causal edges represent structure-property relationships
                 bandgap += edge.transfer_entropy * 0.5;
-                conductivity *= (1.0 + edge.transfer_entropy);
+                conductivity *= 1.0 + edge.transfer_entropy;
                 hardness += edge.transfer_entropy * 2.0;
             }
         }

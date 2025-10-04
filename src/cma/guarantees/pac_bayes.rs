@@ -11,7 +11,7 @@
 //! guarantees, validated empirically over 10,000 trials.
 
 use std::f64::consts::PI;
-use statrs::distribution::{Normal, ContinuousCDF, Continuous};
+use statrs::distribution::{Normal, ContinuousCDF};
 
 /// PAC-Bayes Validator with rigorous statistical bounds
 pub struct PACBayesValidator {

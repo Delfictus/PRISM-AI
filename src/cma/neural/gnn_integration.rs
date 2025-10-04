@@ -11,9 +11,8 @@
 //! using geometric deep learning with rotation/translation invariance.
 
 use candle_core::{Tensor, Device, DType, Result as CandleResult, Shape};
-use candle_nn::{Module, Linear, VarBuilder, Activation, layer_norm, LayerNorm};
+use candle_nn::{Module, Linear, VarBuilder, layer_norm, LayerNorm};
 use ndarray::Array2;
-use std::collections::HashMap;
 
 /// E(3)-Equivariant Graph Neural Network
 /// Preserves rotation and translation symmetries

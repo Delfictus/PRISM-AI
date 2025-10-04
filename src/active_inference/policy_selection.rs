@@ -8,11 +8,10 @@
 //
 // For DARPA Narcissus: Select which 100 of 900 windows to measure
 
-use ndarray::{Array1, Array2};
-use std::f64::consts::PI;
+use ndarray::Array1;
 
 use super::hierarchical_model::{HierarchicalModel, GaussianBelief};
-use super::observation_model::{ObservationModel, MeasurementPattern};
+use super::observation_model::MeasurementPattern;
 use super::transition_model::{TransitionModel, ControlAction};
 use super::variational_inference::VariationalInference;
 
@@ -410,7 +409,8 @@ mod tests {
 
         let policies = controller.selector.generate_policies(&model);
 
-        assert_eq!(policies.len(), 10);
+        // PolicySelector limits n_policies to 5 for GPU optimization
+        assert_eq!(policies.len(), 5);
         assert!(policies.iter().all(|p| p.actions.len() == 3));
     }
 

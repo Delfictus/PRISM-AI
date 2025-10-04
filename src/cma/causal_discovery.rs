@@ -8,9 +8,8 @@
 //! Phase 6, Task 6.1, Stage 2 - Causal Structure Discovery
 //! Phase 6 Implementation Constitution - Sprint 1.2
 
-use ndarray::{Array2, Array1};
+use ndarray::Array2;
 use std::collections::HashMap;
-use anyhow::Result;
 
 use super::transfer_entropy_ksg::{KSGEstimator, TimeSeries};
 use super::transfer_entropy_gpu::GpuKSGEstimator;

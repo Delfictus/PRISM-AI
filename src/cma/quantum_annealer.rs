@@ -8,10 +8,8 @@
 //! Phase 6, Task 6.1, Stage 3 - Quantum Annealing
 //! Phase 6 Implementation Constitution - Sprint 1.3
 
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
 use num_complex::Complex64;
-use std::f64::consts::PI;
-use anyhow::Result;
 
 use super::quantum::{PathIntegralMonteCarlo, GpuPathIntegralMonteCarlo, ProblemHamiltonian};
 

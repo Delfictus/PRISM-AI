@@ -37,7 +37,6 @@
 //! ```
 
 use cudarc::driver::sys as cuda;
-use std::sync::Arc;
 
 /// GPU device properties
 #[derive(Debug, Clone)]

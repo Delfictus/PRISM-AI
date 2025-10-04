@@ -15,9 +15,7 @@
 //! # Constitution Reference
 //! Phase 6 Implementation Constitution - Sprint 1.2
 
-use ndarray::{Array1, Array2};
-use std::f64::consts::PI;
-use anyhow::{Result, Context};
+use anyhow::Result;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -116,13 +114,16 @@ impl KSGEstimator {
     /// Create delay embeddings for both time series
     pub fn create_embeddings(&self, source: &TimeSeries, target: &TimeSeries) -> Result<DelayEmbeddings> {
         let n = source.len();
-        let n_points = n - (self.embed_dim - 1) * self.delay - 1;
+
+        let start_t = self.embed_dim * self.delay;
+        let end_t = n - 1;
+        let n_points = end_t - start_t;  // Actual number of points we'll create
 
         let mut y_current = Vec::with_capacity(n_points);
         let mut y_past = Vec::with_capacity(n_points * self.embed_dim);
         let mut x_past = Vec::with_capacity(n_points * self.embed_dim);
 
-        for t in (self.embed_dim * self.delay)..(n - 1) {
+        for t in start_t..end_t {
             // Current target value Y(t+1)
             y_current.push(target.data[t + 1]);
 
@@ -279,21 +280,21 @@ impl KSGEstimator {
             return f64::NEG_INFINITY;
         }
 
-        // Asymptotic expansion for large x
-        if x > 10.0 {
-            return x.ln() - 0.5 / x - 1.0 / (12.0 * x * x) + 1.0 / (120.0 * x.powi(4));
-        }
-
-        // Recurrence relation: ψ(x+1) = ψ(x) + 1/x
-        let mut result = -0.5772156649; // Euler-Mascheroni constant
+        // Use recurrence to shift x to large value range
+        // ψ(x+1) = ψ(x) + 1/x, so ψ(x) = ψ(x+n) - Σ(1/(x+k)) for k=0..n-1
+        let mut result = 0.0;
         let mut val = x;
 
+        // Shift to val >= 10 for asymptotic expansion
         while val < 10.0 {
             result -= 1.0 / val;
             val += 1.0;
         }
 
-        result + val.ln() - 0.5 / val
+        // Asymptotic expansion for large val
+        result += val.ln() - 0.5 / val - 1.0 / (12.0 * val * val) + 1.0 / (120.0 * val.powi(4));
+
+        result
     }
 
     /// Bootstrap test for statistical significance

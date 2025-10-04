@@ -35,7 +35,6 @@ use std::any::Any;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::marker::PhantomData;
 use std::time::Instant;
 
 /// Pinned memory buffer for fast host-device transfers

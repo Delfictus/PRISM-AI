@@ -18,11 +18,11 @@
 //! Latency < 1ms  // Real-time performance
 //! ```
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
 use std::time::Instant;
 
 use super::information_channel::{InformationChannel, TransferResult};
-use super::synchronization::{PhaseSynchronizer, SynchronizationMetrics, CoherenceLevel};
+use super::synchronization::PhaseSynchronizer;
 use crate::information_theory::TransferEntropy;
 
 /// Domain state (neuromorphic or quantum)

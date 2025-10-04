@@ -11,11 +11,8 @@
 // 4. Performance: <2ms per action selection - BENCHMARKS
 
 use ndarray::Array1;
-use super::hierarchical_model::{HierarchicalModel, constants};
-use super::policy_selection::{ActiveInferenceController, PolicySelector, SensingStrategy};
-use super::variational_inference::VariationalInference;
-use super::observation_model::ObservationModel;
-use super::transition_model::{TransitionModel, ControlAction};
+use super::hierarchical_model::HierarchicalModel;
+use super::policy_selection::ActiveInferenceController;
 
 /// Controller validator for Task 2.3
 pub struct ControllerValidator {
@@ -38,7 +35,7 @@ impl ControllerValidator {
     ) -> bool {
         let initial_uncertainty: f64 = model.level1.belief.variance.sum();
 
-        let mut test_model = model.clone();
+        let test_model = model.clone();
         let mut total_final_uncertainty = 0.0;
 
         // Run multiple trials

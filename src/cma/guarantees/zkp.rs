@@ -11,7 +11,6 @@
 //! Uses commitment schemes and Fiat-Shamir heuristic for non-interactivity
 
 use sha2::{Sha256, Digest};
-use std::collections::HashMap;
 
 /// Zero-Knowledge Proof System
 pub struct ZKProofSystem {

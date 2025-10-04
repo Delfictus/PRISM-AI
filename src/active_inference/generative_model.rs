@@ -13,7 +13,7 @@
 // F = E_q[ln q(x) - ln p(o,x)] → minimize via message passing
 // G(π) = E_q[ln q(o|π) - ln p(o|C)] → minimize for action selection
 
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
 use std::collections::VecDeque;
 
 use super::hierarchical_model::HierarchicalModel;

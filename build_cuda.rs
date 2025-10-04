@@ -42,7 +42,7 @@ fn main() {
     let graph_coloring_ptx = out_dir.join("graph_coloring.ptx");
 
     let status = Command::new("nvcc")
-        .args(&[
+        .args([
             "--ptx",
             "--gpu-architecture=sm_89", // RTX 5070 (Blackwell)
             "-o",
@@ -63,7 +63,7 @@ fn main() {
     let tsp_solver_ptx = out_dir.join("tsp_solver.ptx");
 
     let status = Command::new("nvcc")
-        .args(&[
+        .args([
             "--ptx",
             "--gpu-architecture=sm_89", // RTX 5070 (Blackwell)
             "-o",
@@ -84,7 +84,7 @@ fn main() {
     let parallel_coloring_ptx = out_dir.join("parallel_coloring.ptx");
 
     let status = Command::new("nvcc")
-        .args(&[
+        .args([
             "--ptx",
             "--gpu-architecture=sm_89", // RTX 5070 (Blackwell)
             "-o",
@@ -120,7 +120,7 @@ fn main() {
         let ptx_file = out_dir.join(format!("{}.ptx", name));
 
         let status = Command::new("nvcc")
-            .args(&[
+            .args([
                 "--ptx",
                 "--gpu-architecture=sm_89", // RTX 5070 (Blackwell)
                 "-o",
@@ -130,7 +130,7 @@ fn main() {
                 "--generate-line-info",
             ])
             .status()
-            .expect(&format!("Failed to execute nvcc for {}", file));
+            .unwrap_or_else(|_| panic!("Failed to execute nvcc for {}", file));
 
         if !status.success() {
             panic!("nvcc compilation failed for {}", file);

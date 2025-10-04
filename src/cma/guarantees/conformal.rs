@@ -10,7 +10,6 @@
 //! Purpose: Provide finite-sample, distribution-free coverage guarantees
 //! Valid for any data distribution - no assumptions required!
 
-use std::collections::HashMap;
 
 /// Conformal Predictor with distribution-free guarantees
 pub struct ConformalPredictor {

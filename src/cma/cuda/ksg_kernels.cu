@@ -4,6 +4,8 @@
 #include <cuda_runtime.h>
 #include <math.h>
 
+extern "C" {
+
 // Compute pairwise distances in joint space
 // Each thread handles one query point
 __global__ void compute_distances_kernel(
@@ -278,3 +280,5 @@ __global__ void reduce_sum_kernel(
         atomicAdd(output, sdata[0]);
     }
 }
+
+} // extern "C"

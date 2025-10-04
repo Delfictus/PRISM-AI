@@ -12,11 +12,9 @@
 //! # Constitution Reference
 //! Phase 6 Implementation Constitution - Sprint 1.3
 
-use ndarray::{Array1, Array2};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use std::f64::consts::PI;
-use anyhow::{Result, Context};
+use anyhow::Result;
 
 use crate::cma::{Solution, CausalManifold};
 

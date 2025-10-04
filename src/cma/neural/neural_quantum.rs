@@ -10,7 +10,7 @@
 //! Purpose: 100x speedup over traditional quantum Monte Carlo by using
 //! neural networks to parameterize quantum wavefunctions.
 
-use candle_core::{Tensor, Device, DType, Result as CandleResult, Shape, D};
+use candle_core::{Tensor, Device, DType, Result as CandleResult, Shape};
 use candle_nn::{Module, Linear, VarBuilder, LayerNorm, layer_norm};
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;

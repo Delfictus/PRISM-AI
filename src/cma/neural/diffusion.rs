@@ -89,7 +89,7 @@ impl ConsistencyDiffusion {
         let alpha_t = Tensor::new(&[alpha as f32], &self.device)?;
         let beta_t = Tensor::new(&[beta as f32], &self.device)?;
         let alpha_bar = self.schedule.alpha_bar(t_val);
-        let sqrt_one_minus_alpha_bar = ((1.0 - alpha_bar).sqrt() as f32);
+        let sqrt_one_minus_alpha_bar = (1.0 - alpha_bar).sqrt() as f32;
 
         // x_0 prediction
         let coef1 = (1.0 / alpha.sqrt()) as f32;
@@ -114,8 +114,8 @@ impl ConsistencyDiffusion {
     /// Add noise according to forward process
     fn add_noise(&self, x_0: &Tensor, t: usize) -> CandleResult<Tensor> {
         let alpha_bar = self.schedule.alpha_bar(t);
-        let sqrt_alpha_bar = (alpha_bar.sqrt() as f32);
-        let sqrt_one_minus_alpha_bar = ((1.0 - alpha_bar).sqrt() as f32);
+        let sqrt_alpha_bar = alpha_bar.sqrt() as f32;
+        let sqrt_one_minus_alpha_bar = (1.0 - alpha_bar).sqrt() as f32;
 
         let noise = Tensor::randn(0f32, 1.0, x_0.shape(), &self.device)?;
 

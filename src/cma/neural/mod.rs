@@ -13,9 +13,8 @@
 //! # Implementation Status
 //! Sprint 2.1: REAL E(3)-equivariant GNN (COMPLETE)
 
-use ndarray::{Array1, Array2};
-use candle_core::{Device, Tensor, DType};
-use candle_nn::{Module, VarBuilder};
+use candle_core::Device;
+use candle_nn::Module;
 
 pub mod gnn_integration;   // REAL GNN implementation (Sprint 2.1)
 pub mod diffusion;          // REAL diffusion model (Sprint 2.2)

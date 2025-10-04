@@ -7,6 +7,8 @@
 #include <curand_kernel.h>
 #include <math.h>
 
+extern "C" {
+
 // Update all beads in parallel
 __global__ void update_beads_kernel(
     float* path,              // [n_beads * n_dim] - worldline coordinates
@@ -280,3 +282,5 @@ __global__ void project_onto_manifold_kernel(
 
     path[idx] = projected;
 }
+
+} // extern "C"

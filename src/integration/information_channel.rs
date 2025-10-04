@@ -13,7 +13,6 @@
 //! ```
 
 use ndarray::{Array1, Array2};
-use std::f64::consts::PI;
 
 /// State of information channel
 #[derive(Debug, Clone)]
