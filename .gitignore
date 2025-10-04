@@ -1,1 +1,14 @@
 target/
+
+# GPU validation artifacts
+gpu_monitor.log
+gpu_validation_results.txt
+RUN_GPU_VALIDATION.sh
+
+# Benchmark data
+*.deb
+benchmarks/dimacs/
+benchmarks/*.col
+
+# Example benchmarks
+examples/rtx5070_*.rs
