@@ -9,15 +9,23 @@
 //!
 //! # Constitution Reference
 //! Phase 6, Task 6.3 - Precision Guarantee Framework
+//!
+//! # Implementation Status
+//! Sprint 3.1: REAL PAC-Bayes (COMPLETE)
 
 use std::collections::HashMap;
 use sha2::{Sha256, Digest};
 
-/// Main precision framework
+pub mod pac_bayes;  // REAL PAC-Bayes implementation (Sprint 3.1)
+
+pub use pac_bayes::{PACBayesValidator, PrecisionBound as PACBayesBound, GaussianDistribution};
+
+/// Main precision framework using REAL PAC-Bayes
 pub struct PrecisionFramework {
     confidence_level: f64,
     approximation_threshold: f64,
     calibration_data: Vec<CalibrationPoint>,
+    pac_validator: PACBayesValidator,  // REAL PAC-Bayes validator
 }
 
 impl PrecisionFramework {
@@ -26,6 +34,7 @@ impl PrecisionFramework {
             confidence_level: 0.99, // 99% confidence
             approximation_threshold: 1.05, // 5% approximation ratio
             calibration_data: Vec::new(),
+            pac_validator: PACBayesValidator::new(0.99),
         }
     }
 
@@ -58,29 +67,37 @@ impl PrecisionFramework {
     }
 
     fn compute_pac_bayes_bound(
-        &self,
+        &mut self,
         solution: &super::Solution,
         ensemble: &super::Ensemble
     ) -> PacBayesBound {
-        // McAllester's PAC-Bayes bound
-        let n = ensemble.len() as f64;
-        let delta = 1.0 - self.confidence_level;
+        // Use REAL PAC-Bayes validator
+        let n = ensemble.len();
 
-        // KL divergence between prior and posterior
-        let kl_divergence = self.estimate_kl_divergence(solution, ensemble);
+        // Extract solution costs for posterior update
+        let ensemble_costs: Vec<f64> = ensemble.solutions.iter()
+            .map(|s| s.cost)
+            .collect();
 
-        // Empirical risk
+        // Update posterior distribution
+        self.pac_validator.update_posterior(&ensemble_costs);
+        let posterior = self.pac_validator.get_posterior();
+
+        // Compute empirical risk
         let empirical_risk = self.compute_empirical_risk(solution, ensemble);
 
-        // PAC-Bayes bound: R(h) ≤ R_emp(h) + sqrt((KL(Q||P) + ln(2√n/δ))/(2n))
-        let complexity_term = ((kl_divergence + (2.0 * n.sqrt() / delta).ln()) / (2.0 * n)).sqrt();
-        let error_bound = empirical_risk + complexity_term;
+        // Compute REAL PAC-Bayes bound
+        let pac_bound = self.pac_validator.compute_bound(
+            empirical_risk,
+            n,
+            &posterior,
+        );
 
         PacBayesBound {
-            empirical_risk,
-            kl_divergence,
-            error_bound,
-            sample_size: n as usize,
+            empirical_risk: pac_bound.empirical_risk,
+            kl_divergence: pac_bound.kl_divergence,
+            error_bound: pac_bound.expected_risk,
+            sample_size: pac_bound.n_samples,
         }
     }
 
