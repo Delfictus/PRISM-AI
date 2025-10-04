@@ -13,8 +13,9 @@ use ndarray::Array2;
 use num_complex::Complex64;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use cudarc::driver::CudaContext;
 
-use crate::quantum::gpu_tsp::GpuTspSolver;
+use quantum_engine::GpuTspSolver;
 use crate::cma::{Problem, Solution};
 
 /// GPU-solvable trait for CMA integration
@@ -159,25 +160,31 @@ impl GpuSolvable for GpuTspBridge {
 
     fn get_device_properties(&self) -> Result<GpuProperties> {
         // Get actual GPU properties via CUDA
-        use cudarc::driver::*;
+        use cudarc::driver::sys;
 
-        let device = CudaDevice::new(0)
+        let device = CudaContext::new(0)
             .context("Failed to access GPU device")?;
 
         // Get device name and properties
-        let name = device.name()
-            .unwrap_or_else(|_| "Unknown GPU".to_string());
+        let name = device.name()?;
 
         // Compute capability from device
-        let major = device.attribute(CudaDeviceAttr::ComputeCapabilityMajor)? as u32;
-        let minor = device.attribute(CudaDeviceAttr::ComputeCapabilityMinor)? as u32;
+        let major = device.attribute(sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR)? as u32;
+        let minor = device.attribute(sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR)? as u32;
 
-        // Memory in bytes to GB
-        let memory_bytes = device.attribute(CudaDeviceAttr::TotalGlobalMem)? as usize;
+        // Memory in bytes to GB (use cudarc API correctly)
+        let memory_bytes = unsafe {
+            let mut bytes: usize = 0;
+            let result = sys::cuMemGetInfo_v2(&mut bytes, std::ptr::null_mut());
+            if result != sys::cudaError_enum::CUDA_SUCCESS {
+                return Err(anyhow::anyhow!("Failed to get memory info"));
+            }
+            bytes
+        };
         let memory_gb = memory_bytes as f32 / (1024.0 * 1024.0 * 1024.0);
 
         // Multiprocessor count
-        let multiprocessors = device.attribute(CudaDeviceAttr::MultiProcessorCount)? as u32;
+        let multiprocessors = device.attribute(sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT)? as u32;
 
         Ok(GpuProperties {
             device_name: name,

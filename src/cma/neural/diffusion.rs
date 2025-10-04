@@ -11,7 +11,7 @@
 //! while preserving causal manifold constraints.
 
 use candle_core::{Tensor, Device, DType, Result as CandleResult, Shape, D};
-use candle_nn::{Module, Linear, VarBuilder, ops, LayerNorm, layer_norm};
+use candle_nn::{Module, Linear, VarBuilder, LayerNorm, layer_norm};
 use std::f64::consts::PI;
 
 /// Consistency Diffusion Model for Solution Refinement
@@ -261,7 +261,7 @@ impl UNet {
         for (i, layer) in self.time_mlp.iter().enumerate() {
             t_emb = layer.forward(&t_emb)?;
             if i < self.time_mlp.len() - 1 {
-                t_emb = ops::silu(&t_emb)?;
+                t_emb = candle_nn::ops::silu(&t_emb)?;
             }
         }
 
@@ -350,7 +350,7 @@ impl ResidualBlock {
         // First conv + time conditioning
         let mut h = self.conv1.forward(x)?;
         h = self.norm1.forward(&h)?;
-        h = ops::silu(&h)?;
+        h = candle_nn::ops::silu(&h)?;
 
         // Add time embedding
         let t_proj = self.time_proj.forward(t_emb)?;
@@ -359,7 +359,7 @@ impl ResidualBlock {
         // Second conv
         h = self.conv2.forward(&h)?;
         h = self.norm2.forward(&h)?;
-        h = ops::silu(&h)?;
+        h = candle_nn::ops::silu(&h)?;
 
         // Residual connection
         (h + residual)?.to_dtype(DType::F32)

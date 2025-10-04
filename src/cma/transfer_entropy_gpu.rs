@@ -15,7 +15,7 @@ use super::transfer_entropy_ksg::{TimeSeries, TransferEntropyResult};
 
 /// GPU-accelerated KSG estimator
 pub struct GpuKSGEstimator {
-    device: Arc<CudaDevice>,
+    device: Arc<CudaContext>,
     module: Arc<CudaModule>,
     k: usize,
     embed_dim: usize,
@@ -26,7 +26,7 @@ impl GpuKSGEstimator {
     /// Create new GPU KSG estimator
     pub fn new(k: usize, embed_dim: usize, delay: usize) -> Result<Self> {
         // Initialize CUDA device
-        let device = CudaDevice::new(0)
+        let device = CudaContext::new(0)
             .context("Failed to initialize CUDA device for KSG")?;
 
         // Load KSG CUDA kernels
@@ -40,7 +40,7 @@ impl GpuKSGEstimator {
             Self::compile_cuda_kernels()?
         };
 
-        let module = device.load_ptx(ptx.into(), "ksg_kernels", &["compute_distances_kernel", "find_kth_distance_kernel", "count_neighbors_y_kernel", "count_neighbors_xz_kernel", "count_neighbors_z_kernel", "compute_te_kernel", "reduce_sum_kernel"])
+        let module = device.load_module(ptx.into())
             .context("Failed to load KSG CUDA module")?;
 
         println!("✓ GPU KSG Estimator initialized (k={}, embed_dim={})", k, embed_dim);
@@ -63,18 +63,19 @@ impl GpuKSGEstimator {
         let n_points = embeddings.n_points;
 
         // Allocate GPU memory
-        let y_current_gpu = self.device.htod_copy(embeddings.y_current.clone())?;
-        let y_past_gpu = self.device.htod_copy(embeddings.y_past.clone())?;
-        let x_past_gpu = self.device.htod_copy(embeddings.x_past.clone())?;
+        let stream = self.device.default_stream();
+        let y_current_gpu = stream.memcpy_stod(&embeddings.y_current)?;
+        let y_past_gpu = stream.memcpy_stod(&embeddings.y_past)?;
+        let x_past_gpu = stream.memcpy_stod(&embeddings.x_past)?;
 
-        let distances_gpu = self.device.alloc_zeros::<f32>(n_points * n_points)?;
-        let epsilon_values_gpu = self.device.alloc_zeros::<f32>(n_points)?;
+        let distances_gpu = stream.alloc_zeros::<f32>(n_points * n_points)?;
+        let epsilon_values_gpu = stream.alloc_zeros::<f32>(n_points)?;
 
         // Step 1: Compute pairwise distances
         let threads = 256;
         let blocks = (n_points + threads - 1) / threads;
 
-        let compute_dist_func = self.module.get_func("compute_distances_kernel")
+        let compute_dist_func = self.module.load_function("compute_distances_kernel")
             .context("Failed to get compute_distances_kernel")?;
 
         let config = LaunchConfig {
@@ -83,100 +84,123 @@ impl GpuKSGEstimator {
             shared_mem_bytes: 0,
         };
 
+        let mut launch_args = stream.launch_builder(&compute_dist_func);
+        launch_args.arg(&y_current_gpu);
+        launch_args.arg(&y_past_gpu);
+        launch_args.arg(&x_past_gpu);
+        launch_args.arg(&distances_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args.arg(&n_points_i32);
+        let embed_dim_i32 = self.embed_dim as i32;
+        launch_args.arg(&embed_dim_i32);
+
         unsafe {
-            compute_dist_func.launch(
-                config,
-                (
-                    &y_current_gpu,
-                    &y_past_gpu,
-                    &x_past_gpu,
-                    &distances_gpu,
-                    n_points as i32,
-                    self.embed_dim as i32,
-                ),
-            )?;
+            launch_args.launch(config)?;
         }
 
         // Step 2: Find k-th distances
-        let find_kth_func = self.module.get_func("find_kth_distance_kernel")
+        let find_kth_func = self.module.load_function("find_kth_distance_kernel")
             .context("Failed to get find_kth_distance_kernel")?;
 
+        let mut launch_args2 = stream.launch_builder(&find_kth_func);
+        launch_args2.arg(&distances_gpu);
+        launch_args2.arg(&epsilon_values_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args2.arg(&n_points_i32);
+        let k_i32 = self.k as i32;
+        launch_args2.arg(&k_i32);
+
         unsafe {
-            find_kth_func.launch(
-                config,
-                (
-                    &distances_gpu,
-                    &epsilon_values_gpu,
-                    n_points as i32,
-                    self.k as i32,
-                ),
-            )?;
+            launch_args2.launch(config)?;
         }
 
         // Step 3: Count neighbors in marginal spaces
-        let counts_y_gpu = self.device.alloc_zeros::<i32>(n_points)?;
-        let counts_xz_gpu = self.device.alloc_zeros::<i32>(n_points)?;
-        let counts_z_gpu = self.device.alloc_zeros::<i32>(n_points)?;
+        let counts_y_gpu = stream.alloc_zeros::<i32>(n_points)?;
+        let counts_xz_gpu = stream.alloc_zeros::<i32>(n_points)?;
+        let counts_z_gpu = stream.alloc_zeros::<i32>(n_points)?;
 
-        let count_y_func = self.module.get_func("count_neighbors_y_kernel")?;
-        let count_xz_func = self.module.get_func("count_neighbors_xz_kernel")?;
-        let count_z_func = self.module.get_func("count_neighbors_z_kernel")?;
+        let count_y_func = self.module.load_function("count_neighbors_y_kernel")?;
+        let count_xz_func = self.module.load_function("count_neighbors_xz_kernel")?;
+        let count_z_func = self.module.load_function("count_neighbors_z_kernel")?;
 
+        let mut launch_args3 = stream.launch_builder(&count_y_func);
+        launch_args3.arg(&y_current_gpu);
+        launch_args3.arg(&y_past_gpu);
+        launch_args3.arg(&epsilon_values_gpu);
+        launch_args3.arg(&counts_y_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args3.arg(&n_points_i32);
+        let embed_dim_i32 = self.embed_dim as i32;
+        launch_args3.arg(&embed_dim_i32);
         unsafe {
-            count_y_func.launch(config, (
-                &y_current_gpu, &y_past_gpu, &epsilon_values_gpu,
-                &counts_y_gpu, n_points as i32, self.embed_dim as i32,
-            ))?;
+            launch_args3.launch(config)?;
+        }
 
-            count_xz_func.launch(config, (
-                &x_past_gpu, &y_past_gpu, &epsilon_values_gpu,
-                &counts_xz_gpu, n_points as i32, self.embed_dim as i32,
-            ))?;
+        let mut launch_args4 = stream.launch_builder(&count_xz_func);
+        launch_args4.arg(&x_past_gpu);
+        launch_args4.arg(&y_past_gpu);
+        launch_args4.arg(&epsilon_values_gpu);
+        launch_args4.arg(&counts_xz_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args4.arg(&n_points_i32);
+        let embed_dim_i32 = self.embed_dim as i32;
+        launch_args4.arg(&embed_dim_i32);
+        unsafe {
+            launch_args4.launch(config)?;
+        }
 
-            count_z_func.launch(config, (
-                &y_past_gpu, &epsilon_values_gpu,
-                &counts_z_gpu, n_points as i32, self.embed_dim as i32,
-            ))?;
+        let mut launch_args5 = stream.launch_builder(&count_z_func);
+        launch_args5.arg(&y_past_gpu);
+        launch_args5.arg(&epsilon_values_gpu);
+        launch_args5.arg(&counts_z_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args5.arg(&n_points_i32);
+        let embed_dim_i32 = self.embed_dim as i32;
+        launch_args5.arg(&embed_dim_i32);
+        unsafe {
+            launch_args5.launch(config)?;
         }
 
         // Step 4: Compute TE contributions
-        let te_contributions_gpu = self.device.alloc_zeros::<f32>(n_points)?;
+        let te_contributions_gpu = stream.alloc_zeros::<f32>(n_points)?;
 
-        let compute_te_func = self.module.get_func("compute_te_kernel")?;
+        let compute_te_func = self.module.load_function("compute_te_kernel")?;
 
+        let mut launch_args6 = stream.launch_builder(&compute_te_func);
+        launch_args6.arg(&counts_y_gpu);
+        launch_args6.arg(&counts_xz_gpu);
+        launch_args6.arg(&counts_z_gpu);
+        launch_args6.arg(&te_contributions_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args6.arg(&n_points_i32);
+        let k_i32 = self.k as i32;
+        launch_args6.arg(&k_i32);
         unsafe {
-            compute_te_func.launch(config, (
-                &counts_y_gpu,
-                &counts_xz_gpu,
-                &counts_z_gpu,
-                &te_contributions_gpu,
-                n_points as i32,
-                self.k as i32,
-            ))?;
+            launch_args6.launch(config)?;
         }
 
         // Step 5: Reduce to single TE value
-        let te_result_gpu = self.device.alloc_zeros::<f32>(1)?;
+        let te_result_gpu = stream.alloc_zeros::<f32>(1)?;
 
-        let reduce_func = self.module.get_func("reduce_sum_kernel")?;
+        let reduce_func = self.module.load_function("reduce_sum_kernel")?;
 
         let reduce_config = LaunchConfig {
-            grid_dim: ((n_points + threads - 1) / threads as u32, 1, 1),
+            grid_dim: (((n_points + threads - 1) / threads) as u32, 1, 1),
             block_dim: (threads as u32, 1, 1),
-            shared_mem_bytes: threads * std::mem::size_of::<f32>() as u32,
+            shared_mem_bytes: (threads * std::mem::size_of::<f32>()) as u32,
         };
 
+        let mut launch_args7 = stream.launch_builder(&reduce_func);
+        launch_args7.arg(&te_contributions_gpu);
+        launch_args7.arg(&te_result_gpu);
+        let n_points_i32 = n_points as i32;
+        launch_args7.arg(&n_points_i32);
         unsafe {
-            reduce_func.launch(reduce_config, (
-                &te_contributions_gpu,
-                &te_result_gpu,
-                n_points as i32,
-            ))?;
+            launch_args7.launch(reduce_config)?;
         }
 
         // Copy result back to CPU
-        let mut te_result = vec![0.0f32; 1];
-        self.device.dtoh_sync_copy_into(&te_result_gpu, &mut te_result)?;
+        let te_result: Vec<f32> = stream.memcpy_dtov(&te_result_gpu)?;
 
         let te_value = (te_result[0] as f64) / n_points as f64;
 
@@ -192,7 +216,7 @@ impl GpuKSGEstimator {
         })
     }
 
-    fn create_embeddings(&self, source: &TimeSeries, target: &TimeSeries) -> Result<GpuEmbeddings> {
+    pub fn create_embeddings(&self, source: &TimeSeries, target: &TimeSeries) -> Result<GpuEmbeddings> {
         let n = source.len();
         let n_points = n - (self.embed_dim - 1) * self.delay - 1;
 
@@ -220,9 +244,12 @@ impl GpuKSGEstimator {
 
     fn bootstrap_significance_cpu(&self, source: &TimeSeries, target: &TimeSeries, observed_te: f64) -> Result<f64> {
         // Use CPU KSG for bootstrap (can be optimized with GPU batching)
+        use rand::SeedableRng;
+        use rand::seq::SliceRandom;
+
         let cpu_ksg = super::transfer_entropy_ksg::KSGEstimator::new(self.k, self.embed_dim, self.delay);
 
-        let mut rng = rand_chacha::ChaCha20Rng::from_entropy();
+        let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(42);
         let mut greater_count = 0;
 
         for _ in 0..100 {

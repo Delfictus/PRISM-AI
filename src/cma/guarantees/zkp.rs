@@ -45,7 +45,7 @@ impl ZKProofSystem {
         let challenge = self.generate_challenge(&solution_commitment, &cost_commitment, bound);
 
         // Response to challenge
-        let response = self.generate_response(solution, &blinding, challenge);
+        let response = self.generate_response(solution, &blinding, &challenge);
 
         QualityProof {
             solution_commitment,
@@ -77,7 +77,7 @@ impl ZKProofSystem {
         }
 
         // 3. Verify response consistency
-        if !self.verify_response(&proof.response, &proof.solution_commitment, proof.challenge) {
+        if !self.verify_response(&proof.response, &proof.solution_commitment, &proof.challenge) {
             return false;
         }
 
@@ -258,7 +258,7 @@ impl ZKProofSystem {
         &self,
         solution: &crate::cma::Solution,
         blinding: &[u8],
-        challenge: String,
+        challenge: &str,
     ) -> String {
         // Generate response to challenge
         let mut hasher = Sha256::new();
@@ -272,7 +272,7 @@ impl ZKProofSystem {
         format!("{:x}", hasher.finalize())
     }
 
-    fn verify_response(&self, response: &str, commitment: &str, challenge: String) -> bool {
+    fn verify_response(&self, response: &str, commitment: &str, challenge: &str) -> bool {
         // Verify response is consistent with commitment and challenge
         // Simplified: check format
         response.len() == 64 && commitment.len() == 64 && challenge.len() == 64

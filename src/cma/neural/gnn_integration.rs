@@ -11,7 +11,7 @@
 //! using geometric deep learning with rotation/translation invariance.
 
 use candle_core::{Tensor, Device, DType, Result as CandleResult, Shape};
-use candle_nn::{Module, Linear, VarBuilder, Activation, layer_norm, LayerNorm, ops};
+use candle_nn::{Module, Linear, VarBuilder, Activation, layer_norm, LayerNorm};
 use ndarray::Array2;
 use std::collections::HashMap;
 
@@ -227,9 +227,9 @@ impl E3EquivariantGNN {
         }
 
         // Build edge index and edge features
-        let mut edge_src = Vec::new();
-        let mut edge_dst = Vec::new();
-        let mut edge_attrs = Vec::new();
+        let mut edge_src: Vec<i64> = Vec::new();
+        let mut edge_dst: Vec<i64> = Vec::new();
+        let mut edge_attrs: Vec<f32> = Vec::new();
 
         for (i, neighbors) in distances.iter().enumerate() {
             for &(j, dist) in neighbors {
@@ -300,7 +300,7 @@ impl E3EquivariantGNN {
 
                     // Predict edge strength
                     let edge_logit = self.readout_layer.forward(&pair_tensor)?;
-                    let edge_prob = ops::sigmoid(&edge_logit)?
+                    let edge_prob = candle_nn::ops::sigmoid(&edge_logit)?
                         .to_vec1::<f32>()?[0];
 
                     // Threshold for causal edge (>0.5 probability)
@@ -458,7 +458,7 @@ impl EquivariantMessageLayer {
             let mut msg = message_tensor;
             for layer in &self.message_mlp {
                 msg = layer.forward(&msg)?;
-                msg = ops::relu(&msg)?;
+                msg = msg.relu()?;
             }
             let msg_data = msg.flatten_all()?.to_vec1::<f32>()?;
 
@@ -479,10 +479,10 @@ impl EquivariantMessageLayer {
             for layer in &self.position_mlp {
                 pos_msg = layer.forward(&pos_msg)?;
                 if layer as *const _ != &self.position_mlp[self.position_mlp.len()-1] as *const _ {
-                    pos_msg = ops::relu(&pos_msg)?;
+                    pos_msg = pos_msg.relu()?;
                 }
             }
-            let weight = ops::sigmoid(&pos_msg)?.to_vec1::<f32>()?[0];
+            let weight = candle_nn::ops::sigmoid(&pos_msg)?.to_vec1::<f32>()?[0];
 
             // Update position (equivariant: weighted sum of relative positions)
             for d in 0..3 {

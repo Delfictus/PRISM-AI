@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 /// Conformal Predictor with distribution-free guarantees
 pub struct ConformalPredictor {
-    calibration_set: Vec<CalibrationPoint>,
+    pub calibration_set: Vec<CalibrationPoint>,
     alpha: f64,  // Miscoverage rate (e.g., 0.05 for 95% coverage)
     conformity_measure: ConformityMeasure,
 }

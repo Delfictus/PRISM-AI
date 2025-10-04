@@ -114,7 +114,7 @@ impl KSGEstimator {
     }
 
     /// Create delay embeddings for both time series
-    fn create_embeddings(&self, source: &TimeSeries, target: &TimeSeries) -> Result<DelayEmbeddings> {
+    pub fn create_embeddings(&self, source: &TimeSeries, target: &TimeSeries) -> Result<DelayEmbeddings> {
         let n = source.len();
         let n_points = n - (self.embed_dim - 1) * self.delay - 1;
 
@@ -149,7 +149,7 @@ impl KSGEstimator {
     }
 
     /// KSG estimator for transfer entropy
-    fn ksg_estimate(&self, embeddings: &DelayEmbeddings) -> Result<f64> {
+    pub fn ksg_estimate(&self, embeddings: &DelayEmbeddings) -> Result<f64> {
         let mut te_sum = 0.0;
         let mut valid_points = 0;
 
@@ -246,7 +246,7 @@ impl KSGEstimator {
             .filter(|&j| j != i)
             .filter(|&j| {
                 let other = embeddings.get_xz_point(j);
-                let mut dist = 0.0;
+                let mut dist = 0.0f64;
                 for d in 0..self.embed_dim {
                     dist = dist.max((point.0[d] - other.0[d]).abs());
                     dist = dist.max((point.1[d] - other.1[d]).abs());
@@ -264,7 +264,7 @@ impl KSGEstimator {
             .filter(|&j| j != i)
             .filter(|&j| {
                 let other = embeddings.get_z_point(j);
-                let mut dist = 0.0;
+                let mut dist = 0.0f64;
                 for d in 0..self.embed_dim {
                     dist = dist.max((point[d] - other[d]).abs());
                 }
@@ -323,12 +323,12 @@ impl KSGEstimator {
 }
 
 /// Delay embeddings structure
-struct DelayEmbeddings {
-    y_current: Vec<f64>,
-    y_past: Vec<f64>,
-    x_past: Vec<f64>,
-    n_points: usize,
-    embed_dim: usize,
+pub struct DelayEmbeddings {
+    pub y_current: Vec<f64>,
+    pub y_past: Vec<f64>,
+    pub x_past: Vec<f64>,
+    pub n_points: usize,
+    pub embed_dim: usize,
 }
 
 impl DelayEmbeddings {
@@ -482,6 +482,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-
-// Export main types
-pub use self::{KSGEstimator, TimeSeries, TransferEntropyResult};

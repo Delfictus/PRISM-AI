@@ -52,18 +52,20 @@ impl ValidationResults {
     }
 
     fn summary(&self) -> String {
+        let separator = "=".repeat(60);
         format!(
-            "\n{'='.to_string().repeat(60)}\n\
+            "\n{}\n\
              PHASE 6 PRODUCTION VALIDATION SUMMARY\n\
-             {'='.to_string().repeat(60)}\n\
+             {}\n\
              Tests Run: {}\n\
              Tests Passed: {} ({:.1}%)\n\
              Components Validated: {}\n\
              \n\
              Performance Metrics:\n{}\n\
              \n\
-             Status: {}\n\
-             {'='.to_string().repeat(60)}",
+             Status: {}",
+            separator,
+            separator,
             self.tests_run,
             self.tests_passed,
             (self.tests_passed as f64 / self.tests_run as f64) * 100.0,
@@ -221,11 +223,11 @@ fn test_mathematical_correctness() {
 
     let mut results = ValidationResults::new();
 
-    // Test 1: KL divergence properties
+    // Test 1: KL divergence properties (test via bound computation)
     let validator = PACBayesValidator::new(0.95);
     let p = GaussianDistribution::new(0.0, 1.0);
-    let q = GaussianDistribution::new(0.0, 1.0);
-    let kl = validator.kl_divergence_gaussian(&q, &p);
+    let bound = validator.compute_bound(0.1, 1000, &p);
+    let kl = bound.kl_divergence;
 
     if kl.abs() < 1e-6 {
         results.add_pass("KL Divergence (KL(P||P) = 0)");
@@ -430,9 +432,9 @@ fn create_complex_manifold(n_nodes: usize, n_edges: usize) -> CausalManifold {
 
 #[test]
 fn test_final_production_readiness() {
-    println!("\n{'='.to_string().repeat(70)}");
+    println!("\n{}", "=".repeat(70));
     println!("PHASE 6: FINAL PRODUCTION READINESS ASSESSMENT");
-    println!("{'='.to_string().repeat(70)}\n");
+    println!("{}\n", "=".repeat(70));
 
     let mut overall = ValidationResults::new();
 
@@ -466,7 +468,7 @@ fn test_final_production_readiness() {
     println!("Constitution Compliance: 100%");
     println!();
     println!("Status: PRODUCTION READY ✅");
-    println!("{'='.to_string().repeat(70)}\n");
+    println!("{}\n", "=".repeat(70));
 
     assert_eq!(overall.tests_passed, 10);
 }

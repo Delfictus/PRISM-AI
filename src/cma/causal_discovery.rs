@@ -146,7 +146,7 @@ impl CausalManifoldDiscovery {
             for s in embed_dim..n-1 {
                 if s != t {
                     let dist = self.compute_distance(
-                        y_curr, &target[s],
+                        y_curr, target[s],
                         y_past, &target[s-embed_dim..s],
                         x_past, &source[s-embed_dim..s]
                     );
@@ -247,7 +247,7 @@ impl CausalManifoldDiscovery {
 
     fn compute_metric_tensor(&self, edges: &[super::CausalEdge], dim: usize) -> Array2<f64> {
         // Initialize metric as identity
-        let mut metric = Array2::eye(dim);
+        let mut metric: Array2<f64> = Array2::eye(dim);
 
         // Weight by causal strengths
         for edge in edges {

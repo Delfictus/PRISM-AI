@@ -223,7 +223,7 @@ impl GeometricQuantumAnnealer {
             let a_t = t;
 
             // B(t) for tunneling (decreases as A increases)
-            let b_t = (1.0 - t).powf(self.adiabatic_parameter);
+            let b_t = (1.0f64 - t).powf(self.adiabatic_parameter);
 
             schedule.push((a_t, b_t));
 

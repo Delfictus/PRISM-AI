@@ -15,7 +15,7 @@ use super::path_integral::ProblemHamiltonian;
 
 /// GPU-accelerated PIMC
 pub struct GpuPathIntegralMonteCarlo {
-    device: Arc<CudaDevice>,
+    device: Arc<CudaContext>,
     module: Arc<CudaModule>,
     n_beads: usize,
     beta: f64,
@@ -24,7 +24,7 @@ pub struct GpuPathIntegralMonteCarlo {
 impl GpuPathIntegralMonteCarlo {
     /// Create new GPU PIMC annealer
     pub fn new(n_beads: usize, beta: f64) -> Result<Self> {
-        let device = CudaDevice::new(0)
+        let device = CudaContext::new(0)
             .context("Failed to initialize CUDA for PIMC")?;
 
         // Load PIMC kernels
@@ -36,18 +36,7 @@ impl GpuPathIntegralMonteCarlo {
             Self::compile_pimc_kernels()?
         };
 
-        let module = device.load_ptx(
-            ptx.into(),
-            "pimc_kernels",
-            &[
-                "update_beads_kernel",
-                "init_rand_states_kernel",
-                "compute_path_energy_kernel",
-                "reduce_average_kernel",
-                "compute_spectral_gap_kernel",
-                "project_onto_manifold_kernel",
-            ],
-        )?;
+        let module = device.load_module(ptx.into())?;
 
         println!("✓ GPU PIMC initialized ({} beads, β={:.2})", n_beads, beta);
 
@@ -79,39 +68,42 @@ impl GpuPathIntegralMonteCarlo {
             }
         }
 
-        let path_gpu = self.device.htod_copy(path_data)?;
+        let stream = self.device.default_stream();
+        let path_gpu = stream.memcpy_stod(&path_data)?;
 
         // Allocate Hamiltonian matrix on GPU
         let h_matrix = self.hamiltonian_to_matrix(hamiltonian, n_dim);
-        let h_gpu = self.device.htod_copy(h_matrix)?;
+        let h_gpu = stream.memcpy_stod(&h_matrix)?;
 
         // Allocate manifold edges on GPU
         let manifold_data = self.manifold_to_gpu_format(manifold);
-        let manifold_gpu = self.device.htod_copy(manifold_data)?;
+        let manifold_gpu = stream.memcpy_stod(&manifold_data)?;
 
         // Initialize random states
-        let rand_states_gpu = self.device.alloc_zeros::<u8>(path_size * 48)?; // curandState is 48 bytes
-        let init_rand = self.module.get_func("init_rand_states_kernel")?;
+        let rand_states_gpu = stream.alloc_zeros::<u8>(path_size * 48)?; // curandState is 48 bytes
+        let init_rand = self.module.load_function("init_rand_states_kernel")?;
 
         let init_config = LaunchConfig {
-            grid_dim: ((path_size + 255) / 256, 1, 1),
+            grid_dim: (((path_size + 255) / 256) as u32, 1, 1),
             block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
 
+        let mut launch_args = stream.launch_builder(&init_rand);
+        launch_args.arg(&rand_states_gpu);
+        launch_args.arg(&42u64);
+        let path_size_i32 = path_size as i32;
+        launch_args.arg(&path_size_i32);
+
         unsafe {
-            init_rand.launch(init_config, (
-                &rand_states_gpu,
-                42u64, // seed
-                path_size as i32,
-            ))?;
+            launch_args.launch(init_config)?;
         }
 
         // Annealing loop
         let n_steps = 1000;
-        let accepted_moves_gpu = self.device.alloc_zeros::<i32>(1)?;
+        let mut accepted_moves_gpu = stream.alloc_zeros::<i32>(1)?;
 
-        let update_func = self.module.get_func("update_beads_kernel")?;
+        let update_func = self.module.load_function("update_beads_kernel")?;
 
         for step in 0..n_steps {
             let t = step as f64 / n_steps as f64;
@@ -125,27 +117,31 @@ impl GpuPathIntegralMonteCarlo {
                 shared_mem_bytes: 0,
             };
 
+            let mut launch_args = stream.launch_builder(&update_func);
+            launch_args.arg(&path_gpu);
+            launch_args.arg(&h_gpu);
+            launch_args.arg(&manifold_gpu);
+            let manifold_edges = manifold.edges.len() as i32;
+            launch_args.arg(&manifold_edges);
+            let n_beads_i32 = self.n_beads as i32;
+            launch_args.arg(&n_beads_i32);
+            let n_dim_i32 = n_dim as i32;
+            launch_args.arg(&n_dim_i32);
+            launch_args.arg(&beta_t);
+            launch_args.arg(&tau);
+            let mass = 1.0f32;
+            launch_args.arg(&mass);
+            launch_args.arg(&tunneling);
+            launch_args.arg(&rand_states_gpu);
+            launch_args.arg(&accepted_moves_gpu);
+
             unsafe {
-                update_func.launch(config, (
-                    &path_gpu,
-                    &h_gpu,
-                    &manifold_gpu,
-                    manifold.edges.len() as i32,
-                    self.n_beads as i32,
-                    n_dim as i32,
-                    beta_t,
-                    tau,
-                    1.0f32, // mass
-                    tunneling,
-                    &rand_states_gpu,
-                    &accepted_moves_gpu,
-                ))?;
+                launch_args.launch(config)?;
             }
 
             // Periodically check progress
             if step % 100 == 0 {
-                let mut accepted = vec![0i32; 1];
-                self.device.dtoh_sync_copy_into(&accepted_moves_gpu, &mut accepted)?;
+                let accepted: Vec<i32> = stream.memcpy_dtov(&accepted_moves_gpu)?;
 
                 if step > 0 {
                     let acceptance_rate = accepted[0] as f64 / (100.0 * path_size as f64);
@@ -153,14 +149,13 @@ impl GpuPathIntegralMonteCarlo {
                              step, beta_t, tunneling, acceptance_rate * 100.0);
                 }
 
-                // Reset counter
-                self.device.memset_zeros(&accepted_moves_gpu)?;
+                // Reset counter by creating new buffer
+                accepted_moves_gpu = stream.alloc_zeros::<i32>(1)?;
             }
         }
 
         // Copy result back
-        let mut final_path = vec![0.0f32; path_size];
-        self.device.dtoh_sync_copy_into(&path_gpu, &mut final_path)?;
+        let final_path: Vec<f32> = stream.memcpy_dtov(&path_gpu)?;
 
         // Extract best configuration
         self.extract_best_solution(&final_path, hamiltonian, n_dim)

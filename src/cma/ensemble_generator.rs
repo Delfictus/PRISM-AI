@@ -28,8 +28,9 @@ impl EnhancedEnsembleGenerator {
         let temperatures: Vec<f64> = (0..n_replicas)
             .map(|i| {
                 let ratio = i as f64 / (n_replicas - 1) as f64;
-                let beta = beta_min * (beta_max / beta_min).powf(ratio);
-                1.0 / beta
+                let beta_ratio = (beta_max / beta_min) as f64;
+                let beta = beta_min * beta_ratio.powf(ratio);
+                1.0_f64 / beta
             })
             .collect();
 
@@ -81,9 +82,10 @@ impl EnhancedEnsembleGenerator {
 
     fn parallel_tempering_step(&mut self, problem: &impl crate::cma::Problem) {
         // Monte Carlo steps within replicas
+        let temperatures = self.temperatures.clone();
         for (i, replica) in self.replicas.iter_mut().enumerate() {
-            let beta = 1.0 / self.temperatures[i];
-            self.metropolis_step(replica, beta, problem);
+            let beta = 1.0 / temperatures[i];
+            Self::metropolis_step(replica, beta, problem);
         }
 
         // Replica exchange attempts
@@ -95,7 +97,6 @@ impl EnhancedEnsembleGenerator {
     }
 
     fn metropolis_step(
-        &self,
         replica: &mut ReplicaState,
         beta: f64,
         problem: &impl crate::cma::Problem,

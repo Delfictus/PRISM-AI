@@ -11,7 +11,7 @@
 //! neural networks to parameterize quantum wavefunctions.
 
 use candle_core::{Tensor, Device, DType, Result as CandleResult, Shape, D};
-use candle_nn::{Module, Linear, VarBuilder, ops, LayerNorm, layer_norm};
+use candle_nn::{Module, Linear, VarBuilder, LayerNorm, layer_norm};
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand::SeedableRng;
@@ -284,7 +284,7 @@ impl ResNet {
     pub fn forward(&self, x: &Tensor) -> CandleResult<Tensor> {
         // Input projection
         let mut h = self.input_layer.forward(x)?;
-        h = ops::tanh(&h)?;
+        h = h.tanh()?;
 
         // Residual blocks with layer norm
         for (block, ln) in self.residual_blocks.iter().zip(self.layer_norms.iter()) {
@@ -328,11 +328,11 @@ impl ResidualLayer {
 
         // First layer
         let mut h = self.linear1.forward(x)?;
-        h = ops::tanh(&h)?;
+        h = h.tanh()?;
 
         // Second layer
         h = self.linear2.forward(&h)?;
-        h = ops::tanh(&h)?;
+        h = h.tanh()?;
 
         // Residual connection
         (h + residual)?.to_dtype(DType::F32)
@@ -341,7 +341,7 @@ impl ResidualLayer {
 
 /// Variational Monte Carlo optimizer
 pub struct VariationalMonteCarlo {
-    neural_state: NeuralQuantumState,
+    pub neural_state: NeuralQuantumState,
     num_samples: usize,
     num_iterations: usize,
 }

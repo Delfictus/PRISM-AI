@@ -50,17 +50,17 @@ pub struct CausalManifoldAnnealing {
     precision_framework: guarantees::PrecisionFramework,
 
     // Integration with existing platform
-    gpu_solver: Arc<crate::quantum::gpu_tsp::GpuTspSolver>,
+    gpu_solver: Arc<dyn gpu_integration::GpuSolvable>,
     transfer_entropy: Arc<crate::information_theory::transfer_entropy::TransferEntropy>,
-    active_inference: Arc<crate::active_inference::ActiveInferenceEngine>,
+    active_inference: Arc<crate::active_inference::ActiveInferenceController>,
 }
 
 impl CausalManifoldAnnealing {
     /// Create new CMA engine with default configuration
     pub fn new(
-        gpu_solver: Arc<crate::quantum::gpu_tsp::GpuTspSolver>,
+        gpu_solver: Arc<dyn gpu_integration::GpuSolvable>,
         transfer_entropy: Arc<crate::information_theory::transfer_entropy::TransferEntropy>,
-        active_inference: Arc<crate::active_inference::ActiveInferenceEngine>,
+        active_inference: Arc<crate::active_inference::ActiveInferenceController>,
     ) -> Self {
         Self {
             ensemble_generator: EnhancedEnsembleGenerator::new(),
@@ -184,6 +184,7 @@ pub trait Problem: Send + Sync {
 }
 
 /// Generic solution type
+#[derive(Clone)]
 pub struct Solution {
     pub data: Vec<f64>,
     pub cost: f64,
@@ -218,6 +219,7 @@ pub struct CausalManifold {
 }
 
 /// Causal edge with transfer entropy
+#[derive(Clone)]
 pub struct CausalEdge {
     pub source: usize,
     pub target: usize,

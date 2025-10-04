@@ -496,5 +496,3 @@ mod tests {
         assert!((dist_sq - 8.0).abs() < 1e-10); // (2-0)² + (2-0)² = 8
     }
 }
-
-pub use self::PathIntegralMonteCarlo;

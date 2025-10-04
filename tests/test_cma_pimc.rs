@@ -202,7 +202,7 @@ fn test_gpu_pimc_optimization() {
 fn test_performance_cpu_vs_gpu() {
     use std::time::Instant;
 
-    let cpu_pimc = PathIntegralMonteCarlo::new(15, 8.0);
+    let mut cpu_pimc = PathIntegralMonteCarlo::new(15, 8.0);
     let gpu_result = GpuPathIntegralMonteCarlo::new(15, 8.0);
 
     let hamiltonian = ProblemHamiltonian::new(

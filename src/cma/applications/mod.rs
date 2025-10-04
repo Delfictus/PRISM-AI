@@ -58,7 +58,7 @@ impl HFTAdapter {
         }
 
         TradeDecision::Trade {
-            position,
+            position: position.clone(),
             confidence: cma_solution.guarantee.pac_confidence,
             expected_return: self.compute_expected_return(&position, market_data),
             max_risk: risk,
@@ -158,7 +158,7 @@ impl BiomolecularAdapter {
             affinity_kcal_mol: affinity,
             confidence_lower: confidence_interval.lower,
             confidence_upper: confidence_interval.upper,
-            binding_sites,
+            binding_sites: binding_sites.clone(),
             poses: self.generate_poses(ligand, &binding_sites),
         }
     }
@@ -281,7 +281,7 @@ impl MaterialsAdapter {
 
         MaterialCandidate {
             composition,
-            predicted_properties,
+            predicted_properties: predicted_properties.clone(),
             property_confidence: cma_solution.guarantee.pac_confidence,
             synthesis_route,
             stability_ev: self.compute_stability(&cma_solution.value),
@@ -412,6 +412,7 @@ pub enum TradeDecision {
     NoTrade(String),
 }
 
+#[derive(Clone)]
 pub struct TradingPosition {
     pub size: f64,
     pub direction: Direction,
@@ -419,6 +420,7 @@ pub struct TradingPosition {
     pub take_profit: f64,
 }
 
+#[derive(Clone)]
 pub enum Direction {
     Long,
     Short,
@@ -461,6 +463,7 @@ pub struct BindingPrediction {
     pub poses: Vec<LigandPose>,
 }
 
+#[derive(Clone)]
 pub struct BindingSite {
     pub residue_ids: Vec<usize>,
     pub pocket_volume: f64,
@@ -473,6 +476,7 @@ pub struct LigandPose {
     pub score: f64,
 }
 
+#[derive(Clone)]
 pub struct MaterialProperties {
     pub bandgap_ev: f64,
     pub conductivity_s_per_m: f64,
