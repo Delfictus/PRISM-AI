@@ -8,7 +8,9 @@ project:
   constitution:
     file: "IMPLEMENTATION_CONSTITUTION.md"
     version: "1.0.0"
-    hash: "203fd558105bc8fe4ddcfcfe46b386d4227d5d706aa2dff6bc3cd388192b9e77"
+    hash: "d531e3d5c6db48a2277a0433b68360cb8b03cdcd64453baef87ac451c1900d3f"
+    amendment: "PHASE_6_AMENDMENT.md"
+    amendment_version: "2.0.0"
 
   languages:
     primary: "Rust"

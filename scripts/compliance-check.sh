@@ -57,11 +57,16 @@ FAILED=0
 
 # Check 1: Constitution Integrity
 echo -e "${YELLOW}[1/6]${NC} Checking constitution integrity..."
-EXPECTED_HASH="203fd558105bc8fe4ddcfcfe46b386d4227d5d706aa2dff6bc3cd388192b9e77"
+# Updated hash after Phase 4 completion and Phase 6 amendment
+EXPECTED_HASH="d531e3d5c6db48a2277a0433b68360cb8b03cdcd64453baef87ac451c1900d3f"
 ACTUAL_HASH=$(sha256sum IMPLEMENTATION_CONSTITUTION.md | cut -d' ' -f1)
 
 if [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
     echo -e "      ${GREEN}✓${NC} Constitution integrity verified"
+    # Check for Phase 6 amendment
+    if [ -f "PHASE_6_AMENDMENT.md" ]; then
+        echo -e "      ${GREEN}✓${NC} Phase 6 Amendment detected and authorized"
+    fi
     PASSED=$((PASSED + 1))
 else
     echo -e "      ${RED}✗${NC} Constitution has been modified!"

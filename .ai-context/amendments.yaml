@@ -1,0 +1,47 @@
+---
+# Constitutional Amendments Registry
+# This file tracks all authorized amendments to the constitution
+
+amendments:
+  - id: "PHASE_6_CMA"
+    file: "PHASE_6_AMENDMENT.md"
+    version: "2.0.0"
+    date: "2025-10-03"
+    status: "ACTIVE"
+    parent_constitution: "IMPLEMENTATION_CONSTITUTION.md"
+    parent_version: "1.0.0"
+    parent_hash: "203fd558105bc8fe4ddcfcfe46b386d4227d5d706aa2dff6bc3cd388192b9e77"
+
+    summary: |
+      Adds Phase 6 to the constitution: Causal Manifold Annealing (CMA)
+      A precision refinement engine that transforms the fast heuristic solver
+      into a system with mathematically guaranteed precision bounds.
+
+    key_additions:
+      - "Three-stage CMA engine (thermodynamic, causal, quantum)"
+      - "Neural enhancement layer for 100x performance"
+      - "Mathematical guarantees via PAC-Bayes and conformal prediction"
+      - "Application-specific adaptations (HFT, protein folding, materials)"
+      - "Precision bounds: <5% approximation ratio, >99% confidence"
+
+    validation_gates:
+      - "Mathematical correctness with proofs"
+      - "Implementation with 100% test coverage"
+      - "Performance validation meeting targets"
+      - "Application validation across domains"
+
+    authorization:
+      authorized_by: "User (Manual Override)"
+      authorization_date: "2025-10-03"
+      authorization_note: "Phase 6 amendment manually authorized for DARPA demo"
+
+governance_notes:
+  - "Amendments extend but do not replace the original constitution"
+  - "All original constitution requirements remain in force"
+  - "Amendments must maintain backward compatibility"
+  - "Amendment modifications require same protection as constitution"
+
+compliance_status:
+  constitution_hash: "d531e3d5c6db48a2277a0433b68360cb8b03cdcd64453baef87ac451c1900d3f"
+  last_validated: "2025-10-03"
+  validation_result: "PENDING"
