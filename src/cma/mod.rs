@@ -18,6 +18,7 @@ use std::sync::Arc;
 pub mod ensemble_generator;
 pub mod causal_discovery;
 pub mod quantum_annealer;
+pub mod quantum;  // REAL quantum annealing (Sprint 1.3)
 pub mod neural;
 pub mod guarantees;
 pub mod applications;
