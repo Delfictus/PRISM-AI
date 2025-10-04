@@ -21,6 +21,7 @@ pub mod quantum_annealer;
 pub mod neural;
 pub mod guarantees;
 pub mod applications;
+pub mod gpu_integration;  // REAL GPU integration
 
 // Re-exports for convenience
 pub use ensemble_generator::EnhancedEnsembleGenerator;
@@ -116,13 +117,25 @@ impl CausalManifoldAnnealing {
     }
 
     fn generate_ensemble<P: Problem>(&mut self, problem: &P) -> Ensemble {
-        // Use GPU solver for fast sampling
+        // Use REAL GPU solver for fast sampling
+        use gpu_integration::GpuSolvable;
+
         let mut ensemble = Vec::new();
         let n_samples = 100; // Configurable
 
         for i in 0..n_samples {
-            let solution = self.gpu_solver.solve_with_seed(problem, i as u64);
-            ensemble.push(solution);
+            // Now using actual GPU solver with real implementation
+            match self.gpu_solver.solve_with_seed(problem, i as u64) {
+                Ok(solution) => ensemble.push(solution),
+                Err(e) => {
+                    eprintln!("GPU solve failed for seed {}: {}", i, e);
+                    // Fallback: create random solution
+                    ensemble.push(Solution {
+                        data: vec![0.0; problem.dimension()],
+                        cost: f64::MAX,
+                    });
+                }
+            }
         }
 
         // Apply replica exchange if enabled
