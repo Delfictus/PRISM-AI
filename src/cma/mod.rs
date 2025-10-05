@@ -26,6 +26,8 @@ pub mod gpu_integration;  // REAL GPU integration (Sprint 1.1)
 pub mod transfer_entropy_ksg;  // REAL KSG estimator (Sprint 1.2)
 pub mod transfer_entropy_gpu;  // GPU-accelerated TE (Sprint 1.2)
 pub mod cuda;  // CUDA kernels
+pub mod pac_bayes;  // PAC-Bayes bounds (Phase 6)
+pub mod conformal_prediction;  // Conformal prediction (Phase 6)
 
 // Re-exports for convenience
 pub use ensemble_generator::EnhancedEnsembleGenerator;
