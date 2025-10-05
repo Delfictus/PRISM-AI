@@ -17,17 +17,16 @@ pub struct GpuMemoryManager {
 }
 
 impl GpuMemoryManager {
-    /// Create new GPU memory manager
-    pub fn new() -> Result<Self> {
-        let context = CudaContext::new(0)
-            .map_err(|e| anyhow::anyhow!("Failed to initialize CUDA context: {}", e))?;
-
-        let context_arc = Arc::new(context);
-        let stream = context_arc.new_stream()
+    /// Create new GPU memory manager with shared CUDA context
+    ///
+    /// # Arguments
+    /// * `context` - Shared CUDA context (CudaContext::new already returns Arc)
+    pub fn new(context: Arc<CudaContext>) -> Result<Self> {
+        let stream = context.new_stream()
             .map_err(|e| anyhow::anyhow!("Failed to create CUDA stream: {}", e))?;
 
         Ok(Self {
-            context: context_arc,
+            context,
             stream,
         })
     }

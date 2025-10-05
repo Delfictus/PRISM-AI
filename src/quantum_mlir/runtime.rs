@@ -27,7 +27,14 @@ pub struct QuantumGpuRuntime {
 impl QuantumGpuRuntime {
     /// Create new quantum GPU runtime
     pub fn new(num_qubits: usize) -> Result<Self> {
-        let memory = Arc::new(GpuMemoryManager::new()?);
+        use cudarc::driver::CudaContext;
+
+        // Create CUDA context once (CudaContext::new already returns Arc)
+        let context = CudaContext::new(0)
+            .map_err(|e| anyhow::anyhow!("Failed to create CUDA context: {}", e))?;
+
+        // Pass the context to memory manager
+        let memory = Arc::new(GpuMemoryManager::new(context)?);
         let dimension = 1 << num_qubits;
 
         println!("[Quantum GPU Runtime] Initializing with {} qubits", num_qubits);
