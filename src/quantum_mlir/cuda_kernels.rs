@@ -1,10 +1,13 @@
-//! CUDA Kernel FFI Bindings for Quantum MLIR
+//! CUDA Kernel Runtime Loading via PTX
 //!
-//! Direct bindings to the GPU kernels with native complex number support
+//! Uses cudarc's PTX runtime loading instead of FFI to .o files
+//! This solves ALL linking issues - kernels loaded at runtime from PTX files
 
-use std::ffi::c_void;
-use std::os::raw::{c_int, c_double};
-use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+use cudarc::driver::*;
+use cudarc::nvrtc::compile_ptx_with_opts;
+use std::sync::Arc;
+use std::collections::HashMap;
+use anyhow::{Result, Context};
 
 /// CUDA complex number type matching cuDoubleComplex
 #[repr(C)]
@@ -32,194 +35,243 @@ impl CudaComplex {
 unsafe impl DeviceRepr for CudaComplex {}
 unsafe impl ValidAsZeroBits for CudaComplex {}
 
-// FFI bindings to CUDA kernels
-extern "C" {
-    // Initialize quantum state to |00...0>
-    pub fn quantum_init_state(
-        state: *mut CudaComplex,
-        dimension: c_int,
-    ) -> c_int;
-
-    // Apply Hadamard gate
-    pub fn quantum_hadamard(
-        state: *mut CudaComplex,
-        qubit: c_int,
-        num_qubits: c_int,
-    ) -> c_int;
-
-    // Apply CNOT gate
-    pub fn quantum_cnot(
-        state: *mut CudaComplex,
-        control: c_int,
-        target: c_int,
-        num_qubits: c_int,
-    ) -> c_int;
-
-    // Time evolution
-    pub fn quantum_evolve(
-        state: *mut CudaComplex,
-        hamiltonian: *const CudaComplex,
-        time: c_double,
-        dimension: c_int,
-        trotter_steps: c_int,
-    ) -> c_int;
-
-    // Quantum Fourier Transform
-    pub fn quantum_qft(
-        state: *mut CudaComplex,
-        num_qubits: c_int,
-        inverse: bool,
-    ) -> c_int;
-
-    // VQE ansatz
-    pub fn quantum_vqe_ansatz(
-        state: *mut CudaComplex,
-        parameters: *const c_double,
-        num_qubits: c_int,
-        num_layers: c_int,
-    ) -> c_int;
-
-    // Measure quantum state
-    pub fn quantum_measure(
-        state: *const CudaComplex,
-        probabilities: *mut c_double,
-        dimension: c_int,
-    ) -> c_int;
+/// Quantum GPU Kernels using PTX runtime loading
+pub struct QuantumGpuKernels {
+    context: Arc<CudaContext>,
+    kernels: HashMap<String, Arc<CudaFunction>>,
 }
 
-/// Safe Rust wrapper for quantum GPU operations
-pub struct QuantumGpuKernels;
-
 impl QuantumGpuKernels {
-    /// Initialize quantum state on GPU
-    pub fn init_state(state_ptr: *mut CudaComplex, dimension: usize) -> anyhow::Result<()> {
-        unsafe {
-            let result = quantum_init_state(state_ptr, dimension as c_int);
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
+    /// Create new quantum GPU kernels with PTX runtime loading
+    pub fn new(context: Arc<CudaContext>) -> Result<Self> {
+        // Load PTX module at runtime
+        println!("[Quantum PTX] Loading quantum_mlir.ptx...");
+
+        let ptx_path = "target/ptx/quantum_mlir.ptx";
+        let ptx_source = std::fs::read_to_string(ptx_path)
+            .with_context(|| format!("Failed to read PTX file: {}", ptx_path))?;
+
+        println!("[Quantum PTX] PTX file loaded ({} bytes)", ptx_source.len());
+
+        // Load PTX module
+        let ptx = cudarc::nvrtc::Ptx::from_file(ptx_path);
+        let module = context.load_module(ptx)
+            .context("Failed to load PTX module")?;
+
+        println!("[Quantum PTX] ✓ PTX module loaded");
+
+        // Load individual kernel functions
+        let mut kernels = HashMap::new();
+
+        let kernel_names = vec![
+            "hadamard_gate_kernel",
+            "cnot_gate_kernel",
+            "qft_kernel",
+            "vqe_ansatz_kernel",
+            "measure_kernel",
+        ];
+
+        for name in kernel_names {
+            match module.load_function(name) {
+                Ok(func) => {
+                    println!("[Quantum PTX] ✓ Loaded: {}", name);
+                    kernels.insert(name.to_string(), Arc::new(func));
+                }
+                Err(e) => {
+                    println!("[Quantum PTX] ⚠ Failed to load {}: {}", name, e);
+                }
             }
         }
+
+        println!("[Quantum PTX] ✓ Native cuDoubleComplex support ready");
+
+        Ok(Self { context, kernels })
     }
 
     /// Apply Hadamard gate on GPU
     pub fn hadamard(
-        state_ptr: *mut CudaComplex,
+        &self,
+        state: &mut CudaSlice<CudaComplex>,
         qubit: usize,
         num_qubits: usize,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
+        let dimension = 1 << num_qubits;
+        let num_blocks = ((dimension / 2) + 255) / 256;
+        let num_threads = 256;
+
+        let func = self.kernels.get("hadamard_gate_kernel")
+            .ok_or_else(|| anyhow::anyhow!("Hadamard kernel not loaded"))?;
+
+        let config = LaunchConfig {
+            grid_dim: (num_blocks as u32, 1, 1),
+            block_dim: (num_threads as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let stream = self.context.default_stream();
+        let qubit_i32 = qubit as i32;
+        let num_qubits_i32 = num_qubits as i32;
+
+        let mut launch_args = stream.launch_builder(func);
+        launch_args.arg(state);
+        launch_args.arg(&qubit_i32);
+        launch_args.arg(&num_qubits_i32);
+
         unsafe {
-            let result = quantum_hadamard(state_ptr, qubit as c_int, num_qubits as c_int);
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
-            }
+            launch_args.launch(config)
+                .context("Hadamard kernel launch failed")?;
         }
+
+        Ok(())
     }
 
     /// Apply CNOT gate on GPU
     pub fn cnot(
-        state_ptr: *mut CudaComplex,
+        &self,
+        state: &mut CudaSlice<CudaComplex>,
         control: usize,
         target: usize,
         num_qubits: usize,
-    ) -> anyhow::Result<()> {
-        unsafe {
-            let result = quantum_cnot(
-                state_ptr,
-                control as c_int,
-                target as c_int,
-                num_qubits as c_int,
-            );
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
-            }
-        }
-    }
+    ) -> Result<()> {
+        let dimension = 1 << num_qubits;
+        let num_blocks = ((dimension / 4) + 255) / 256;
+        let num_threads = 256;
 
-    /// Evolve quantum state on GPU
-    pub fn evolve(
-        state_ptr: *mut CudaComplex,
-        hamiltonian_ptr: *const CudaComplex,
-        time: f64,
-        dimension: usize,
-        trotter_steps: usize,
-    ) -> anyhow::Result<()> {
+        let func = self.kernels.get("cnot_gate_kernel")
+            .ok_or_else(|| anyhow::anyhow!("CNOT kernel not loaded"))?;
+
+        let config = LaunchConfig {
+            grid_dim: (num_blocks as u32, 1, 1),
+            block_dim: (num_threads as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let stream = self.context.default_stream();
+        let control_i32 = control as i32;
+        let target_i32 = target as i32;
+        let num_qubits_i32 = num_qubits as i32;
+
+        let mut launch_args = stream.launch_builder(func);
+        launch_args.arg(state);
+        launch_args.arg(&control_i32);
+        launch_args.arg(&target_i32);
+        launch_args.arg(&num_qubits_i32);
+
         unsafe {
-            let result = quantum_evolve(
-                state_ptr,
-                hamiltonian_ptr,
-                time,
-                dimension as c_int,
-                trotter_steps as c_int,
-            );
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
-            }
+            launch_args.launch(config)
+                .context("CNOT kernel launch failed")?;
         }
+
+        Ok(())
     }
 
     /// Apply Quantum Fourier Transform on GPU
     pub fn qft(
-        state_ptr: *mut CudaComplex,
+        &self,
+        state: &mut CudaSlice<CudaComplex>,
         num_qubits: usize,
         inverse: bool,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
+        let dimension = 1 << num_qubits;
+        let num_blocks = (dimension + 255) / 256;
+        let num_threads = 256;
+
+        let func = self.kernels.get("qft_kernel")
+            .ok_or_else(|| anyhow::anyhow!("QFT kernel not loaded"))?;
+
+        let config = LaunchConfig {
+            grid_dim: (num_blocks as u32, 1, 1),
+            block_dim: (num_threads as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let stream = self.context.default_stream();
+        let num_qubits_i32 = num_qubits as i32;
+
+        let mut launch_args = stream.launch_builder(func);
+        launch_args.arg(state);
+        launch_args.arg(&num_qubits_i32);
+        launch_args.arg(&inverse);
+
         unsafe {
-            let result = quantum_qft(state_ptr, num_qubits as c_int, inverse);
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
-            }
+            launch_args.launch(config)
+                .context("QFT kernel launch failed")?;
         }
+
+        Ok(())
     }
 
-    /// Apply VQE ansatz on GPU
+    /// VQE ansatz application
     pub fn vqe_ansatz(
-        state_ptr: *mut CudaComplex,
-        parameters: &[f64],
+        &self,
+        state: &mut CudaSlice<CudaComplex>,
+        parameters: &CudaSlice<f64>,
         num_qubits: usize,
         num_layers: usize,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
+        let dimension = 1 << num_qubits;
+        let num_blocks = (dimension + 255) / 256;
+        let num_threads = 256;
+
+        let func = self.kernels.get("vqe_ansatz_kernel")
+            .ok_or_else(|| anyhow::anyhow!("VQE kernel not loaded"))?;
+
+        let config = LaunchConfig {
+            grid_dim: (num_blocks as u32, 1, 1),
+            block_dim: (num_threads as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let stream = self.context.default_stream();
+        let num_qubits_i32 = num_qubits as i32;
+        let num_layers_i32 = num_layers as i32;
+
+        let mut launch_args = stream.launch_builder(func);
+        launch_args.arg(state);
+        launch_args.arg(parameters);
+        launch_args.arg(&num_qubits_i32);
+        launch_args.arg(&num_layers_i32);
+
         unsafe {
-            let result = quantum_vqe_ansatz(
-                state_ptr,
-                parameters.as_ptr(),
-                num_qubits as c_int,
-                num_layers as c_int,
-            );
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
-            }
+            launch_args.launch(config)
+                .context("VQE kernel launch failed")?;
         }
+
+        Ok(())
     }
 
-    /// Measure quantum state on GPU
+    /// Measure quantum state
     pub fn measure(
-        state_ptr: *const CudaComplex,
-        probabilities: &mut [f64],
+        &self,
+        state: &CudaSlice<CudaComplex>,
+        probabilities: &mut CudaSlice<f64>,
         dimension: usize,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
+        let num_blocks = (dimension + 255) / 256;
+        let num_threads = 256;
+
+        let func = self.kernels.get("measure_kernel")
+            .ok_or_else(|| anyhow::anyhow!("Measure kernel not loaded"))?;
+
+        let config = LaunchConfig {
+            grid_dim: (num_blocks as u32, 1, 1),
+            block_dim: (num_threads as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let stream = self.context.default_stream();
+        let dimension_i32 = dimension as i32;
+
+        let mut launch_args = stream.launch_builder(func);
+        launch_args.arg(state);
+        launch_args.arg(probabilities);
+        launch_args.arg(&dimension_i32);
+
         unsafe {
-            let result = quantum_measure(
-                state_ptr,
-                probabilities.as_mut_ptr(),
-                dimension as c_int,
-            );
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("CUDA error: {}", result))
-            }
+            launch_args.launch(config)
+                .context("Measure kernel launch failed")?;
         }
+
+        Ok(())
     }
 }

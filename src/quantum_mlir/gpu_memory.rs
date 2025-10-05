@@ -12,7 +12,7 @@ use super::Complex64;
 
 /// GPU memory manager for quantum states
 pub struct GpuMemoryManager {
-    context: Arc<CudaContext>,
+    pub context: Arc<CudaContext>,
     stream: Arc<cudarc::driver::CudaStream>,
 }
 
