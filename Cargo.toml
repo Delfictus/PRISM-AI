@@ -3,9 +3,9 @@ name = "prism-ai"
 version = "0.1.0"
 edition = "2021"
 authors = ["Prism-AI Research Team"]
-description = "PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds - GPU-accelerated neuromorphic and quantum computing analogues"
+description = "PRISM: Predictive Reasoning via Information-theoristic Statistical Manifolds - GPU-accelerated neuromorphic and quantum computing analogues"
 license = "MIT"
-build = "build_cuda.rs"
+build = "build.rs"
 
 [workspace]
 members = [
@@ -17,14 +17,23 @@ members = [
     "src/adapters",
     "src/mathematics",
     "validation",
+    "src/csf-mlir",
+    "src/csf-quantum",
 ]
 
 [features]
 default = ["cuda"]
 # Real CUDA GPU acceleration (requires NVIDIA drivers + RTX GPU)
-cuda = ["neuromorphic-engine/cuda"]
+cuda = ["neuromorphic-engine/cuda", "dep:bindgen"]
+# MLIR support for advanced optimizations
+mlir = []
 # CPU-based simulation (DEPRECATED - only for testing without GPU)
 simulation = ["neuromorphic-engine/simulation"]
+
+[build-dependencies]
+cc = "1.0"
+bindgen = { version = "0.69", optional = true }
+cuda-config = "0.1"
 
 [dependencies]
 neuromorphic-engine = { path = "src/neuromorphic", default-features = false, features = ["cuda"] }
@@ -34,6 +43,8 @@ shared-types = { path = "src/shared-types" }
 prct-core = { path = "src/prct-core" }
 prct-adapters = { path = "src/adapters" }
 mathematics = { path = "src/mathematics" }
+csf-mlir = { path = "src/csf-mlir" }
+csf-quantum = { path = "src/csf-quantum" }
 
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -65,6 +76,7 @@ parking_lot = "0.12"
 cudarc = { version = "0.17", features = ["driver", "nvrtc", "cublas", "curand"] }
 candle-core = { version = "0.9", features = ["cuda"] }
 candle-nn = "0.9"
+colored = "2.1"
 
 [[example]]
 name = "platform_demo"
