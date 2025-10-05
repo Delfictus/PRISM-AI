@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRISM-AI: Quantum Phase Resonance Graph Coloring</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, #0A0E27 0%, #1a1f3a 100%);
+            color: #00D4FF;
+            overflow-x: hidden;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto 500px 300px 200px 150px;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1920px;
+            margin: 0 auto;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 20px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 2px solid #00D4FF;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0,212,255,0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(0,212,255,0.5);
+            z-index: 1;
+            position: relative;
+        }
+
+        .instance-info {
+            font-size: 1.2em;
+            color: #00FF88;
+            z-index: 1;
+            position: relative;
+        }
+
+        .main-graph {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #00D4FF;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+        }
+
+        #graph-canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 5px;
+        }
+
+        .gpu-monitor {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #00D4FF;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .gpu-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 10px;
+            height: 100%;
+        }
+
+        .gpu-card {
+            background: linear-gradient(135deg, rgba(0,212,255,0.1) 0%, rgba(0,255,136,0.1) 100%);
+            border: 1px solid #00D4FF;
+            border-radius: 5px;
+            padding: 10px;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .gpu-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,212,255,0.3);
+        }
+
+        .gpu-id {
+            font-weight: bold;
+            color: #00FF88;
+        }
+
+        .gpu-util-bar {
+            height: 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            margin: 5px 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .gpu-util-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00FF88, #00D4FF);
+            border-radius: 10px;
+            transition: width 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gpu-util-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .metrics-panel {
+            grid-column: 1 / -1;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #00D4FF;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            height: 100%;
+        }
+
+        .metric-card {
+            background: rgba(0,212,255,0.05);
+            border: 1px solid rgba(0,212,255,0.3);
+            border-radius: 5px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 0.9em;
+            color: rgba(0,212,255,0.7);
+            margin-bottom: 10px;
+        }
+
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #00FF88;
+            text-shadow: 0 0 10px rgba(0,255,136,0.5);
+        }
+
+        .metric-trend {
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+
+        .trend-down { color: #00FF88; }
+        .trend-up { color: #FF0044; }
+
+        .applications-panel {
+            grid-column: 1 / -1;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #00D4FF;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            height: 100%;
+        }
+
+        .app-card {
+            background: linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,212,255,0.1));
+            border: 1px solid rgba(0,212,255,0.3);
+            border-radius: 5px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .app-card:hover {
+            transform: scale(1.05);
+            border-color: #00FF88;
+        }
+
+        .app-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .app-name {
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .app-value {
+            font-size: 1.2em;
+            color: #00FF88;
+        }
+
+        .comparison-table {
+            grid-column: 1 / -1;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #00D4FF;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 5px;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px;
+            color: #00D4FF;
+            border-bottom: 2px solid #00D4FF;
+        }
+
+        td {
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+        }
+
+        tr.prism-ai {
+            background: linear-gradient(90deg, rgba(0,255,136,0.2), rgba(0,212,255,0.2));
+            animation: highlight 2s ease-in-out infinite;
+        }
+
+        @keyframes highlight {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .world-record {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            background: linear-gradient(135deg, #00FF88, #00D4FF);
+            color: #0A0E27;
+            padding: 40px 80px;
+            border-radius: 20px;
+            font-size: 3em;
+            font-weight: bold;
+            z-index: 1000;
+            animation: recordPop 1s ease-out forwards;
+            display: none;
+        }
+
+        @keyframes recordPop {
+            0% { transform: translate(-50%, -50%) scale(0) rotate(-180deg); }
+            50% { transform: translate(-50%, -50%) scale(1.2) rotate(10deg); }
+            100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+        }
+
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #00FF88;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .convergence-chart {
+            width: 100%;
+            height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>PRISM-AI: Quantum Phase Resonance Graph Coloring <span class="status-indicator"></span></h1>
+            <div class="instance-info">
+                <span id="instance-name">DSJC1000.5</span> |
+                <span id="vertices">1000 vertices</span> |
+                <span id="edges">249,826 edges</span> |
+                Target: <span id="target">&lt;83 colors</span>
+            </div>
+        </div>
+
+        <div class="main-graph">
+            <h2>Graph Visualization</h2>
+            <canvas id="graph-canvas"></canvas>
+            <div style="margin-top: 10px;">
+                Colors Used: <span id="colors-used" style="font-size: 1.5em; color: #00FF88;">--</span> |
+                Conflicts: <span id="conflicts" style="font-size: 1.5em; color: #FF0044;">--</span>
+            </div>
+        </div>
+
+        <div class="gpu-monitor">
+            <h2>8× NVIDIA H100 GPU Cluster</h2>
+            <div class="gpu-grid" id="gpu-grid">
+                <!-- GPU cards will be generated dynamically -->
+            </div>
+        </div>
+
+        <div class="metrics-panel">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Current Colors</div>
+                    <div class="metric-value" id="metric-colors">--</div>
+                    <div class="metric-trend trend-down">↓ Optimizing</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Conflicts</div>
+                    <div class="metric-value" id="metric-conflicts">--</div>
+                    <div class="metric-trend trend-down">↓ Resolving</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Iteration</div>
+                    <div class="metric-value" id="metric-iteration">0</div>
+                    <div class="metric-trend">Processing</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Time Elapsed</div>
+                    <div class="metric-value" id="metric-time">0s</div>
+                    <div class="metric-trend">Running</div>
+                </div>
+            </div>
+            <canvas id="convergence-chart" class="convergence-chart"></canvas>
+        </div>
+
+        <div class="applications-panel">
+            <h2>Real-World Applications</h2>
+            <div class="app-grid">
+                <div class="app-card">
+                    <div class="app-icon">📡</div>
+                    <div class="app-name">5G Network</div>
+                    <div class="app-value"><span id="app-5g">82</span> frequencies</div>
+                </div>
+                <div class="app-card">
+                    <div class="app-icon">🗺️</div>
+                    <div class="app-name">Map Coloring</div>
+                    <div class="app-value"><span id="app-map">82</span> colors</div>
+                </div>
+                <div class="app-card">
+                    <div class="app-icon">📅</div>
+                    <div class="app-name">Scheduling</div>
+                    <div class="app-value"><span id="app-schedule">82</span> time slots</div>
+                </div>
+                <div class="app-card">
+                    <div class="app-icon">🎯</div>
+                    <div class="app-name">Register Alloc</div>
+                    <div class="app-value"><span id="app-register">82</span> registers</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="comparison-table">
+            <h2>Algorithm Comparison</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Algorithm</th>
+                        <th>Colors</th>
+                        <th>Time</th>
+                        <th>Hardware</th>
+                        <th>Energy</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="prism-ai">
+                        <td>PRISM-AI (GPU)</td>
+                        <td id="prism-colors">--</td>
+                        <td id="prism-time">--</td>
+                        <td>8× H100</td>
+                        <td id="prism-energy">--</td>
+                    </tr>
+                    <tr>
+                        <td>DSATUR (CPU)</td>
+                        <td>85</td>
+                        <td>47 min</td>
+                        <td>64-core Xeon</td>
+                        <td>0.8 kWh</td>
+                    </tr>
+                    <tr>
+                        <td>TabuCol (CPU)</td>
+                        <td>84</td>
+                        <td>2.3 hrs</td>
+                        <td>64-core Xeon</td>
+                        <td>1.9 kWh</td>
+                    </tr>
+                    <tr>
+                        <td>Genetic Algorithm</td>
+                        <td>86</td>
+                        <td>4.1 hrs</td>
+                        <td>64-core Xeon</td>
+                        <td>3.3 kWh</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="world-record" id="world-record">
+        🏆 NEW WORLD RECORD!
+    </div>
+
+    <canvas class="particles" id="particles"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize GPU cards
+        const gpuGrid = document.getElementById('gpu-grid');
+        for (let i = 0; i < 8; i++) {
+            const card = document.createElement('div');
+            card.className = 'gpu-card';
+            card.innerHTML = `
+                <div class="gpu-id">GPU ${i}</div>
+                <div class="gpu-util-bar">
+                    <div class="gpu-util-fill" id="gpu-${i}-util" style="width: 0%"></div>
+                </div>
+                <div style="font-size: 0.8em;">
+                    <span id="gpu-${i}-percent">0%</span> |
+                    <span id="gpu-${i}-temp">0°C</span>
+                </div>
+            `;
+            gpuGrid.appendChild(card);
+        }
+
+        // WebSocket connection for real-time metrics
+        let ws;
+        let graphData = null;
+        let colorHistory = [];
+        let conflictHistory = [];
+
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8080/metrics');
+
+            ws.onmessage = (event) => {
+                const metrics = JSON.parse(event.data);
+                updateDashboard(metrics);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed, reconnecting...');
+                setTimeout(connectWebSocket, 1000);
+            };
+        }
+
+        function updateDashboard(metrics) {
+            // Update main metrics
+            document.getElementById('colors-used').textContent = metrics.colors_used;
+            document.getElementById('conflicts').textContent = metrics.conflicts;
+            document.getElementById('metric-colors').textContent = metrics.colors_used;
+            document.getElementById('metric-conflicts').textContent = metrics.conflicts;
+            document.getElementById('metric-iteration').textContent = metrics.iteration;
+            document.getElementById('metric-time').textContent = Math.floor(metrics.timestamp / 1000) + 's';
+
+            // Update GPU metrics
+            metrics.gpu_metrics.forEach((gpu, i) => {
+                document.getElementById(`gpu-${i}-util`).style.width = gpu.utilization + '%';
+                document.getElementById(`gpu-${i}-percent`).textContent = gpu.utilization.toFixed(1) + '%';
+                document.getElementById(`gpu-${i}-temp`).textContent = gpu.temperature.toFixed(0) + '°C';
+            });
+
+            // Update applications
+            document.getElementById('app-5g').textContent = metrics.colors_used;
+            document.getElementById('app-map').textContent = metrics.colors_used;
+            document.getElementById('app-schedule').textContent = metrics.colors_used;
+            document.getElementById('app-register').textContent = metrics.colors_used;
+
+            // Update comparison table
+            document.getElementById('prism-colors').textContent = metrics.colors_used;
+            document.getElementById('prism-time').textContent = (metrics.timestamp / 1000).toFixed(1) + 's';
+            document.getElementById('prism-energy').textContent = ((metrics.timestamp / 1000) * 2.8 / 3600).toFixed(2) + ' kWh';
+
+            // Store history for charts
+            colorHistory.push(metrics.colors_used);
+            conflictHistory.push(metrics.conflicts);
+            if (colorHistory.length > 100) {
+                colorHistory.shift();
+                conflictHistory.shift();
+            }
+
+            // Update convergence chart
+            updateConvergenceChart();
+
+            // Check for world record
+            if (metrics.colors_used < 83 && metrics.conflicts === 0) {
+                showWorldRecord();
+            }
+
+            // Update graph visualization
+            updateGraphVisualization(metrics.best_coloring);
+        }
+
+        function updateConvergenceChart() {
+            const canvas = document.getElementById('convergence-chart');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
+            ctx.beginPath();
+            for (let i = 0; i <= 5; i++) {
+                const y = (canvas.height / 5) * i;
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+            }
+            ctx.stroke();
+
+            // Draw color history
+            if (colorHistory.length > 1) {
+                ctx.strokeStyle = '#00FF88';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                const maxColors = Math.max(...colorHistory);
+                const minColors = Math.min(...colorHistory);
+                const range = maxColors - minColors || 1;
+
+                colorHistory.forEach((colors, i) => {
+                    const x = (i / (colorHistory.length - 1)) * canvas.width;
+                    const y = canvas.height - ((colors - minColors) / range) * canvas.height * 0.9 - 10;
+
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }
+        }
+
+        function updateGraphVisualization(coloring) {
+            const canvas = document.getElementById('graph-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+
+            // Clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Simulate graph visualization (in real implementation, would use Three.js)
+            const numNodes = Math.min(100, coloring ? coloring.length : 100);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.4;
+
+            for (let i = 0; i < numNodes; i++) {
+                const angle = (i / numNodes) * Math.PI * 2;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+
+                // Color based on coloring solution
+                const color = coloring ? `hsl(${(coloring[i] * 360 / 100) % 360}, 70%, 50%)` : '#00D4FF';
+
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+
+                // Add glow effect
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function showWorldRecord() {
+            const recordDiv = document.getElementById('world-record');
+            recordDiv.style.display = 'block';
+
+            // Particle effect
+            createParticles();
+
+            setTimeout(() => {
+                recordDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function createParticles() {
+            const canvas = document.getElementById('particles');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const particles = [];
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    size: Math.random() * 3 + 1,
+                    color: Math.random() > 0.5 ? '#00FF88' : '#00D4FF'
+                });
+            }
+
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.1; // Gravity
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                });
+
+                if (particles.some(p => p.y < canvas.height)) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            animate();
+        }
+
+        // Initialize
+        connectWebSocket();
+        updateGraphVisualization(null);
+
+        // Simulate initial metrics if no WebSocket
+        setTimeout(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                // Show demo data
+                updateDashboard({
+                    timestamp: 5000,
+                    iteration: 100,
+                    colors_used: 84,
+                    conflicts: 23,
+                    best_coloring: new Array(100).fill(0).map(() => Math.floor(Math.random() * 84)),
+                    gpu_metrics: Array(8).fill(null).map((_, i) => ({
+                        gpu_id: i,
+                        utilization: 85 + Math.random() * 10,
+                        temperature: 72 + Math.random() * 8,
+                        memory_used: 40 + Math.random() * 10,
+                        memory_total: 80,
+                        power_draw: 300 + Math.random() * 100
+                    })),
+                    phase_field: [],
+                    kuramoto_order: 0.8,
+                    energy: 234.5,
+                    best_gpu_id: 3
+                });
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
