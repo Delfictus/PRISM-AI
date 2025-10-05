@@ -13,6 +13,7 @@ use super::Complex64;
 /// GPU memory manager for quantum states
 pub struct GpuMemoryManager {
     context: Arc<CudaContext>,
+    stream: Arc<cudarc::driver::CudaStream>,
 }
 
 impl GpuMemoryManager {
@@ -21,8 +22,13 @@ impl GpuMemoryManager {
         let context = CudaContext::new(0)
             .map_err(|e| anyhow::anyhow!("Failed to initialize CUDA context: {}", e))?;
 
+        let context_arc = Arc::new(context);
+        let stream = context_arc.new_stream()
+            .map_err(|e| anyhow::anyhow!("Failed to create CUDA stream: {}", e))?;
+
         Ok(Self {
-            context: Arc::new(context),
+            context: context_arc,
+            stream,
         })
     }
 
@@ -97,13 +103,13 @@ impl GpuMemoryManager {
     }
 
     /// Get raw pointer to GPU memory (for FFI)
-    pub fn get_ptr<T>(&self, slice: &CudaSlice<T>) -> *mut std::ffi::c_void {
-        slice.device_ptr().0 as *mut std::ffi::c_void
+    pub fn get_ptr<T>(&self, slice: &CudaSlice<T>) -> *mut T {
+        slice.device_ptr(&self.stream).0 as *mut T
     }
 
     /// Get const pointer to GPU memory (for FFI)
-    pub fn get_const_ptr<T>(&self, slice: &CudaSlice<T>) -> *const std::ffi::c_void {
-        slice.device_ptr().0 as *const std::ffi::c_void
+    pub fn get_const_ptr<T>(&self, slice: &CudaSlice<T>) -> *const T {
+        slice.device_ptr(&self.stream).0 as *const T
     }
 
     /// Synchronize GPU operations

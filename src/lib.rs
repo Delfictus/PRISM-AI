@@ -29,7 +29,7 @@ pub mod cuda_bindings;
 pub mod mlir_runtime;
 
 // Quantum MLIR Dialect - First-class GPU acceleration with native complex support!
-// TODO: Complete implementation and re-enable
+// TODO: Fix Arc<CudaContext> lifecycle issue with streams
 // pub mod quantum_mlir;
 
 // Re-export key components

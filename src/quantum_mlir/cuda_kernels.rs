@@ -92,13 +92,13 @@ pub struct QuantumGpuKernels;
 
 impl QuantumGpuKernels {
     /// Initialize quantum state on GPU
-    pub fn init_state(state_ptr: *mut CudaComplex, dimension: usize) -> Result<(), String> {
+    pub fn init_state(state_ptr: *mut CudaComplex, dimension: usize) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_init_state(state_ptr, dimension as c_int);
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
@@ -108,13 +108,13 @@ impl QuantumGpuKernels {
         state_ptr: *mut CudaComplex,
         qubit: usize,
         num_qubits: usize,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_hadamard(state_ptr, qubit as c_int, num_qubits as c_int);
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
@@ -125,7 +125,7 @@ impl QuantumGpuKernels {
         control: usize,
         target: usize,
         num_qubits: usize,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_cnot(
                 state_ptr,
@@ -136,7 +136,7 @@ impl QuantumGpuKernels {
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
@@ -148,7 +148,7 @@ impl QuantumGpuKernels {
         time: f64,
         dimension: usize,
         trotter_steps: usize,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_evolve(
                 state_ptr,
@@ -160,7 +160,7 @@ impl QuantumGpuKernels {
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
@@ -170,13 +170,13 @@ impl QuantumGpuKernels {
         state_ptr: *mut CudaComplex,
         num_qubits: usize,
         inverse: bool,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_qft(state_ptr, num_qubits as c_int, inverse);
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
@@ -187,7 +187,7 @@ impl QuantumGpuKernels {
         parameters: &[f64],
         num_qubits: usize,
         num_layers: usize,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_vqe_ansatz(
                 state_ptr,
@@ -198,7 +198,7 @@ impl QuantumGpuKernels {
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
@@ -208,7 +208,7 @@ impl QuantumGpuKernels {
         state_ptr: *const CudaComplex,
         probabilities: &mut [f64],
         dimension: usize,
-    ) -> Result<(), String> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let result = quantum_measure(
                 state_ptr,
@@ -218,7 +218,7 @@ impl QuantumGpuKernels {
             if result == 0 {
                 Ok(())
             } else {
-                Err(format!("CUDA error: {}", result))
+                Err(anyhow::anyhow!("CUDA error: {}", result))
             }
         }
     }
