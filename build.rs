@@ -172,6 +172,9 @@ fn configure_mlir() {
     let llvm_dir = env::var("LLVM_DIR")
         .unwrap_or_else(|_| mlir_dir.clone());
 
+    // Compile MLIR runtime C++ file if it exists
+    compile_mlir_runtime(&mlir_dir, &llvm_dir);
+
     // Add MLIR/LLVM libraries
     println!("cargo:rustc-link-search=native={}/lib", mlir_dir);
     println!("cargo:rustc-link-search=native={}/lib", llvm_dir);
@@ -218,6 +221,47 @@ fn configure_mlir() {
     // Generate bindings if bindgen is available
     #[cfg(feature = "bindgen")]
     generate_mlir_bindings(&mlir_dir);
+}
+
+fn compile_mlir_runtime(mlir_dir: &str, llvm_dir: &str) {
+    let runtime_cpp = PathBuf::from("src/mlir_runtime.cpp");
+    if !runtime_cpp.exists() {
+        println!("cargo:warning=MLIR runtime C++ file not found, skipping compilation");
+        return;
+    }
+
+    println!("cargo:warning=Compiling MLIR runtime...");
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let obj_file = out_dir.join("mlir_runtime.o");
+
+    // Compile C++ file
+    let status = Command::new("clang++")
+        .args(&[
+            "-c",
+            "-std=c++17",
+            "-O3",
+            "-fPIC",
+            &format!("-I{}/include", mlir_dir),
+            &format!("-I{}/include", llvm_dir),
+            "-I/usr/local/cuda/include",
+            runtime_cpp.to_str().unwrap(),
+            "-o", obj_file.to_str().unwrap(),
+        ])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            println!("cargo:rustc-link-arg={}", obj_file.display());
+            println!("cargo:warning=MLIR runtime compiled successfully");
+        },
+        Ok(_) => {
+            println!("cargo:warning=MLIR runtime compilation failed, continuing without it");
+        },
+        Err(e) => {
+            println!("cargo:warning=clang++ not found: {}, skipping MLIR runtime", e);
+        }
+    }
 }
 
 #[cfg(feature = "bindgen")]

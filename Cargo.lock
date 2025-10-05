@@ -674,6 +674,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cuda-config"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ee74643f7430213a1a78320f88649de309b20b80818325575e393f848f79f5d"
+dependencies = [
+ "glob",
+]
+
+[[package]]
 name = "cudarc"
 version = "0.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2446,12 +2455,15 @@ dependencies = [
  "anyhow",
  "approx 0.5.1",
  "bincode",
+ "bindgen",
  "candle-core 0.9.1",
  "candle-nn 0.9.1",
+ "cc",
  "chrono",
  "criterion",
  "csf-mlir",
  "csf-quantum",
+ "cuda-config",
  "cudarc 0.17.3",
  "dashmap 5.5.3",
  "env_logger",
