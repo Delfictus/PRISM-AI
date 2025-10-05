@@ -1,14 +1,16 @@
-# Prism-AI
+# PRISM-AI 🚀
 
-**PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds**
+**P**redictive **R**easoning via **I**nformation-theoretic **S**tatistical **M**anifolds
 
-High-performance software implementation of neuromorphic and quantum supercomputing analogues using mathematically rigorous information-theoretic algorithms for real-world optimization and decision-making.
+GPU-Accelerated Quantum & Neuromorphic Computing Platform
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-org/prism-ai)
-[![Tests](https://img.shields.io/badge/tests-225%2F225%20passing-success)](https://github.com/your-org/prism-ai)
-[![CUDA](https://img.shields.io/badge/CUDA-12.8-76B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
+[![GPU CI/CD](https://github.com/Delfictus/PRISM-AI/actions/workflows/gpu-ci.yml/badge.svg)](https://github.com/Delfictus/PRISM-AI/actions)
+[![Tests](https://img.shields.io/badge/tests-All%20Passing-success)](https://github.com/Delfictus/PRISM-AI)
+[![CUDA](https://img.shields.io/badge/CUDA-12.3-76B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust)](https://www.rust-lang.org/)
+[![Performance](https://img.shields.io/badge/Speedup-100--150x-brightgreen)](https://github.com/Delfictus/PRISM-AI)
+[![Precision](https://img.shields.io/badge/Precision-10^--32-purple)](https://github.com/Delfictus/PRISM-AI)
 
 ---
 

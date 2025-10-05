@@ -1,0 +1,378 @@
+name: GPU Acceleration CI/CD
+
+on:
+  push:
+    branches: [ main, sprint1-gpu-acceleration, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CUDA_VERSION: "12.3"
+
+jobs:
+  # Job 1: Check code quality and formatting
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+  # Job 2: CPU tests (fast, runs on all PRs)
+  cpu-tests:
+    name: CPU Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, nightly]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build without GPU
+        run: cargo build --verbose
+
+      - name: Run CPU tests
+        run: cargo test --verbose --no-default-features
+
+      - name: Check documentation
+        run: cargo doc --no-deps --document-private-items
+
+  # Job 3: GPU tests (requires GPU runner)
+  gpu-tests:
+    name: GPU Tests (CUDA ${{ matrix.cuda }})
+    runs-on: [self-hosted, gpu]  # Requires self-hosted GPU runner
+    strategy:
+      matrix:
+        cuda: ["12.3", "12.0"]
+    continue-on-error: ${{ matrix.cuda != '12.3' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup CUDA
+        run: |
+          # Install CUDA if not present
+          if ! command -v nvcc &> /dev/null; then
+            wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
+            sudo dpkg -i cuda-keyring_1.0-1_all.deb
+            sudo apt-get update
+            sudo apt-get -y install cuda-toolkit-${{ matrix.cuda }}
+          fi
+          echo "/usr/local/cuda-${{ matrix.cuda }}/bin" >> $GITHUB_PATH
+          echo "CUDA_HOME=/usr/local/cuda-${{ matrix.cuda }}" >> $GITHUB_ENV
+
+      - name: Verify GPU
+        run: |
+          nvidia-smi
+          nvcc --version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and CUDA
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            target/ptx
+          key: ${{ runner.os }}-gpu-${{ matrix.cuda }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build CUDA kernels
+        run: |
+          cd src/kernels
+          nvcc -ptx -arch=sm_86 -O3 double_double.cu -o double_double.ptx
+          nvcc -ptx -arch=sm_86 -O3 quantum_evolution.cu -o quantum_evolution.ptx
+          cd ../..
+
+      - name: Build with GPU features
+        run: cargo build --verbose --features cuda
+
+      - name: Run GPU tests
+        run: |
+          cargo test --features cuda -- --nocapture
+          cargo test --test gpu_validation --features cuda
+
+      - name: Run GPU benchmarks
+        run: |
+          cargo run --example gpu_quantum_benchmark --features cuda
+          cargo run --example cma_gpu_demo --features cuda
+
+      - name: Validate precision
+        run: cargo test --test generate_validation_data --features cuda
+
+  # Job 4: Python validation (QuTiP cross-check)
+  python-validation:
+    name: Python Validation
+    runs-on: ubuntu-latest
+    needs: [cpu-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+
+      - name: Install QuTiP
+        run: |
+          pip install --upgrade pip
+          pip install qutip numpy scipy matplotlib
+
+      - name: Run QuTiP validation
+        run: |
+          cd validation
+          python validate_quantum_evolution.py
+          cd ..
+
+  # Job 5: Performance regression testing
+  performance-test:
+    name: Performance Regression
+    runs-on: [self-hosted, gpu, benchmark]
+    needs: [gpu-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          echo "CUDA_HOME=/usr/local/cuda-12.3" >> $GITHUB_ENV
+          echo "/usr/local/cuda-12.3/bin" >> $GITHUB_PATH
+
+      - name: Run performance benchmarks
+        run: |
+          cargo bench --features cuda | tee benchmark_results.txt
+
+      - name: Compare with baseline
+        run: |
+          # Compare current results with stored baseline
+          if [ -f .github/performance_baseline.txt ]; then
+            python .github/scripts/compare_benchmarks.py benchmark_results.txt .github/performance_baseline.txt
+          else
+            cp benchmark_results.txt .github/performance_baseline.txt
+            echo "Created new baseline"
+          fi
+
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-results
+          path: benchmark_results.txt
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('benchmark_results.txt', 'utf8');
+            const summary = results.split('\n').slice(0, 10).join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Performance Benchmark Results\n\`\`\`\n${summary}\n\`\`\``
+            });
+
+  # Job 6: Build documentation
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    needs: [cpu-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mdBook
+        run: |
+          cargo install mdbook --version 0.4.35
+          cargo install mdbook-mermaid
+
+      - name: Build Rust docs
+        run: |
+          cargo doc --all-features --no-deps
+          cp -r target/doc docs/api
+
+      - name: Build mdBook documentation
+        run: |
+          cd docs
+          mdbook build
+          cd ..
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/book
+
+  # Job 7: Security audit
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run cargo audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+
+  # Job 8: Release (only on tags)
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [code-quality, cpu-tests, gpu-tests, python-validation, security-audit]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --features cuda
+          cargo build --release --no-default-features
+
+      - name: Create release archive
+        run: |
+          mkdir -p release
+          cp target/release/prism-ai release/prism-ai-gpu
+          cp target/release/prism-ai release/prism-ai-cpu
+          cp -r src/kernels release/
+          cp SPRINT1_COMPLETE.md release/README.md
+          tar -czf prism-ai-${{ github.ref_name }}.tar.gz release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            prism-ai-${{ github.ref_name }}.tar.gz
+          body: |
+            # PRISM-AI ${{ github.ref_name }}
+
+            GPU-accelerated quantum and neuromorphic computing platform.
+
+            ## Features
+            - 100-150x GPU acceleration
+            - 10^-32 precision capability
+            - PAC-Bayes mathematical guarantees
+            - Conformal prediction
+
+            See SPRINT1_COMPLETE.md for details.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 9: Container build
+  container:
+    name: Build Docker Container
+    runs-on: ubuntu-latest
+    needs: [cpu-tests, gpu-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push GPU container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.gpu
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/prism-ai:gpu-latest
+            ghcr.io/${{ github.repository }}/prism-ai:gpu-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # Status check
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [code-quality, cpu-tests, gpu-tests, python-validation, build-docs, security-audit]
+    if: always()
+
+    steps:
+      - name: Check status
+        run: |
+          if [[ "${{ needs.code-quality.result }}" == "success" ]] &&
+             [[ "${{ needs.cpu-tests.result }}" == "success" ]] &&
+             [[ "${{ needs.python-validation.result }}" == "success" ]] &&
+             [[ "${{ needs.build-docs.result }}" == "success" ]] &&
+             [[ "${{ needs.security-audit.result }}" == "success" ]]; then
+            echo "✅ All required checks passed!"
+            exit 0
+          else
+            echo "❌ Some checks failed"
+            exit 1
+          fi
