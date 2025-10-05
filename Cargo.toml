@@ -1,9 +1,9 @@
 [package]
-name = "active-inference-platform"
+name = "prism-ai"
 version = "0.1.0"
 edition = "2021"
-authors = ["Active Inference Research"]
-description = "Scientifically rigorous active inference platform with GPU acceleration"
+authors = ["Prism-AI Research Team"]
+description = "PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds - GPU-accelerated neuromorphic and quantum computing analogues"
 license = "MIT"
 build = "build_cuda.rs"
 
@@ -171,7 +171,7 @@ name = "comprehensive_benchmark"
 path = "examples/comprehensive_benchmark.rs"
 
 [lib]
-name = "active_inference_platform"
+name = "prism_ai"
 path = "src/lib.rs"
 
 [[test]]

@@ -1,5 +1,7 @@
 # MASTER IMPLEMENTATION CONSTITUTION
-## Active Inference Platform - Definitive Development Guide
+## Prism-AI Platform - Definitive Development Guide
+
+**PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds**
 
 ### ⚠️ CRITICAL: This is the ONLY implementation strategy to follow
 ### Version: 1.0.0 FINAL
@@ -13,7 +15,7 @@
 **MANDATORY: At the start of EVERY development session, use this command:**
 
 ```
-I am working on the Active Inference Platform project.
+I am working on the Prism-AI project.
 The ONLY implementation guide is in IMPLEMENTATION_CONSTITUTION.md
 Please load and follow this constitution exactly.
 All previous discussions are superseded by this document.
@@ -23,7 +25,7 @@ All previous discussions are superseded by this document.
 
 ## Executive Summary
 
-This constitution establishes a **12-week phased development plan** for building a scientifically rigorous, production-grade Active Inference Platform. The system implements:
+This constitution establishes a **12-week phased development plan** for building a scientifically rigorous, production-grade **Prism-AI Platform**. The system implements:
 
 1. **Pure Software Implementation** of neuromorphic and quantum domain analogues
 2. **Information-Theoretic Coupling** between computational domains

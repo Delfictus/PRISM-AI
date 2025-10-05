@@ -1,4 +1,6 @@
-//! Active Inference Platform
+//! Prism-AI Platform
+//!
+//! PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds
 //!
 //! Constitution: Phase 1-4 - Mathematical Foundation, Active Inference, Integration & Production Hardening
 //! Pure software implementation of neuromorphic and quantum domain analogues
@@ -52,6 +54,6 @@ pub use optimization::{
 
 /// Platform version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const NAME: &str = "Active Inference Platform";
-pub const DESCRIPTION: &str = "Scientifically rigorous active inference platform with GPU acceleration";
+pub const NAME: &str = "Prism-AI";
+pub const DESCRIPTION: &str = "PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds";
 

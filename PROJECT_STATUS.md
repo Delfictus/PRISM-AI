@@ -1,4 +1,6 @@
-# Project Status - Active Inference Platform
+# Project Status - Prism-AI
+
+**PRISM: Predictive Reasoning via Information-theoretic Statistical Manifolds**
 
 **Last Updated**: 2025-10-04
 **Constitution Version**: 1.0.0 + Phase 6 Amendment
