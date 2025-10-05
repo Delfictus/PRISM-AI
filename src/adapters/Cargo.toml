@@ -15,8 +15,9 @@ neuromorphic-engine = { path = "../neuromorphic", default-features = false, feat
 quantum-engine = { path = "../quantum" }
 platform-foundation = { path = "../foundation" }
 
-# GPU acceleration
-cudarc = { version = "0.17", features = ["driver", "nvrtc"] }
+# New quantum abstraction layer (replaces direct cudarc for quantum ops)
+csf-quantum = { path = "../csf-quantum" }
+csf-mlir = { path = "../csf-mlir" }
 
 # Utilities
 anyhow = "1.0"
