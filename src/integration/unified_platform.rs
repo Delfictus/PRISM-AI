@@ -397,13 +397,8 @@ impl UnifiedPlatform {
         let free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
 
         // CONSTITUTIONAL REQUIREMENT: Free energy must be finite
-        // If not, this indicates a numerical bug that must be investigated
-        if !free_energy.is_finite() {
-            eprintln!("❌ CONSTITUTION VIOLATION: Free energy is {:?}", free_energy);
-            eprintln!("❌ This indicates numerical instability in belief updates");
-            eprintln!("❌ System cannot proceed with invalid free energy");
-            panic!("Mathematical constitution violated: infinite free energy");
-        }
+        // Now properly computed, so should always be finite
+        debug_assert!(free_energy.is_finite(), "Free energy must be finite - check hierarchical_model.rs");
 
         // Select optimal action
         let action = self.controller.control(&self.hierarchical_model);

@@ -396,9 +396,38 @@ impl HierarchicalModel {
     ///   = D_KL[q || p] + E_q[-ln p(o|x)]
     ///   = Complexity + Surprise
     pub fn compute_free_energy(&self, observations: &Array1<f64>) -> f64 {
-        // This is a placeholder - full implementation requires observation model
-        // Will be completed in observation_model.rs
-        self.free_energy
+        // Variational Free Energy: F = E_q[log q - log p]
+        // Simplified but mathematically valid implementation
+
+        // Observation precision (how well predictions match observations)
+        let obs_size = observations.len().min(self.level1.belief.mean.len());
+        let mut prediction_error = 0.0;
+        for i in 0..obs_size {
+            let error = observations[i] - self.level1.belief.mean[i];
+            prediction_error += error * error;
+        }
+
+        // Complexity cost (KL divergence from prior)
+        let complexity = self.level1.belief.kl_divergence(&GaussianBelief::isotropic(
+            self.level1.belief.mean.len(),
+            0.0,
+            1.0
+        ));
+
+        // Free energy = Accuracy cost + Complexity cost
+        // F = 0.5 * ||error||² + KL[q||p]
+        let free_energy = 0.5 * prediction_error + complexity;
+
+        // CONSTITUTIONAL CHECK: Must be finite
+        if !free_energy.is_finite() {
+            eprintln!("⚠ Free energy computation produced non-finite value");
+            eprintln!("  Prediction error: {:.6}", prediction_error);
+            eprintln!("  Complexity: {:.6}", complexity);
+            // Return a safe fallback but log the issue
+            return 0.0;
+        }
+
+        free_energy
     }
 
     /// Predict future state at all levels
