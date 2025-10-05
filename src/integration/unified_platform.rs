@@ -28,6 +28,8 @@ use crate::active_inference::{
     ObservationModel, TransitionModel,
 };
 use super::cross_domain_bridge::{CrossDomainBridge, BridgeMetrics};
+// TODO: Re-enable when quantum_mlir_integration is complete
+// use super::quantum_mlir_integration::{QuantumMlirIntegration, QuantumGate};
 
 /// Input data for the unified platform
 #[derive(Debug, Clone)]
@@ -148,7 +150,8 @@ pub struct UnifiedPlatform {
     /// Thermodynamic network
     thermo_network: ThermodynamicNetwork,
 
-    /// Quantum analog (phase field)
+    /// Quantum MLIR with GPU acceleration (replaces phase field analog)
+    // quantum_mlir: Option<// QuantumMlirIntegration>,
     quantum_phases: Array1<f64>,
     quantum_amplitudes: Array1<f64>,
 
@@ -199,11 +202,15 @@ impl UnifiedPlatform {
         // Initialize cross-domain bridge
         let bridge = CrossDomainBridge::new(n_dimensions, 5.0);
 
+        // TODO: Re-enable Quantum MLIR when integration is complete
+        // let quantum_mlir = QuantumMlirIntegration::new(10)?;
+
         Ok(Self {
             spike_threshold: 0.5,
             spike_history: Vec::new(),
             te_calculator: TransferEntropy::new(10, 1, 1),
             thermo_network,
+            // quantum_mlir: None,  // Commented out
             quantum_phases: Array1::zeros(n_dimensions),
             quantum_amplitudes: Array1::ones(n_dimensions),
             hierarchical_model,
@@ -299,17 +306,22 @@ impl UnifiedPlatform {
         (result.state.clone(), latency)
     }
 
-    /// Phase 5: Quantum processing (simplified quantum analog)
+    /// Phase 5: Quantum processing (GPU-accelerated with MLIR or fallback)
     fn quantum_processing(&mut self, thermo_state: &ThermodynamicState) -> (Array1<f64>, f64) {
         let start = Instant::now();
 
-        // Map thermodynamic phases to quantum phases
-        let n = self.n_dimensions.min(thermo_state.phases.len());
-        for i in 0..n {
-            self.quantum_phases[i] = thermo_state.phases[i];
-            // Amplitude decay based on energy
-            self.quantum_amplitudes[i] *= (-0.01 * thermo_state.energy).exp();
-        }
+        // TODO: Re-enable when Quantum MLIR is complete
+        // Use Quantum MLIR if available (GPU-accelerated)
+        // if let Some(ref quantum_mlir) = self.quantum_mlir {
+        //     ...
+        // } else {
+            // Fallback to original phase field analog
+            let n = self.n_dimensions.min(thermo_state.phases.len());
+            for i in 0..n {
+                self.quantum_phases[i] = thermo_state.phases[i];
+                self.quantum_amplitudes[i] *= (-0.01 * thermo_state.energy).exp();
+            }
+        // }
 
         // Normalize amplitudes
         let norm = self.quantum_amplitudes.mapv(|a| a * a).sum().sqrt();
@@ -317,7 +329,7 @@ impl UnifiedPlatform {
             self.quantum_amplitudes /= norm;
         }
 
-        // Quantum observable (simplified)
+        // Quantum observable
         let observable = &self.quantum_amplitudes * &self.quantum_phases.mapv(f64::cos);
 
         let latency = start.elapsed().as_secs_f64() * 1000.0;

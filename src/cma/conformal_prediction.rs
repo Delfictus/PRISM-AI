@@ -323,8 +323,10 @@ impl ConformalPredictor {
                 *w /= sum;
             }
 
-            // Update quantile with new weights
-            self.quantile = self.compute_weighted_quantile(weights).unwrap_or(self.quantile);
+            // Update quantile with new weights (clone to avoid borrow checker issue)
+            let weights_clone = weights.clone();
+            drop(weights);  // Explicitly drop mutable borrow
+            self.quantile = self.compute_weighted_quantile(&weights_clone).unwrap_or(self.quantile);
         }
     }
 

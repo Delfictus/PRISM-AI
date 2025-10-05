@@ -25,6 +25,9 @@ nalgebra = "0.33"
 parking_lot = "0.12"
 tokio = { version = "1.0", features = ["sync"] }
 
+# GPU support
+cudarc = { version = "0.17", features = ["driver", "nvrtc", "cublas", "curand"] }
+
 [features]
 default = ["cuda"]
 cuda = ["neuromorphic-engine/cuda"]

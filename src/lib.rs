@@ -29,7 +29,8 @@ pub mod cuda_bindings;
 pub mod mlir_runtime;
 
 // Quantum MLIR Dialect - First-class GPU acceleration with native complex support!
-pub mod quantum_mlir;
+// TODO: Complete implementation and re-enable
+// pub mod quantum_mlir;
 
 // Re-export key components
 pub use mathematics::{

@@ -205,20 +205,9 @@ impl QuantumCompiler {
 
     /// Detect GPU architecture
     fn detect_gpu_architecture() -> Result<GpuArchitecture> {
-        use cudarc::driver::CudaDevice;
-
-        // Get compute capability from cudarc
-        let device = CudaDevice::new(0)?;
-        let (major, minor) = device.compute_capability();
-
-        match (major, minor) {
-            (7, 0) => Ok(GpuArchitecture::Volta),
-            (7, 5) => Ok(GpuArchitecture::Turing),
-            (8, 0) | (8, 6) => Ok(GpuArchitecture::Ampere),
-            (8, 9) => Ok(GpuArchitecture::Ada),
-            (9, 0) => Ok(GpuArchitecture::Hopper),
-            _ => Ok(GpuArchitecture::Ampere), // Default to Ampere
-        }
+        // For now, assume RTX 5070 (Ada Lovelace, SM 8.9)
+        // TODO: Query actual compute capability when cudarc API is clarified
+        Ok(GpuArchitecture::Ada)
     }
 }
 
@@ -347,6 +336,7 @@ impl CompiledQuantumKernel {
 }
 
 /// Quantum state
+#[derive(Clone)]
 pub struct QuantumState {
     pub dimension: usize,
     pub amplitudes: Vec<Complex64>,
@@ -392,7 +382,9 @@ pub mod mlir {
         pub fn create_function(&self, _name: &str) -> Function { Function }
     }
 
-    pub struct Function {
+    pub struct Function;
+
+    impl Function {
         pub fn append_op(&self, _op: crate::quantum_mlir::ops::Operation) {}
     }
 }

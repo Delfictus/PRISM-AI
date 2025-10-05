@@ -21,6 +21,8 @@ pub mod cross_domain_bridge;
 pub mod information_channel;
 pub mod synchronization;
 pub mod unified_platform;
+// TODO: Complete quantum_mlir_integration implementation
+// pub mod quantum_mlir_integration;
 
 pub use cross_domain_bridge::{
     CrossDomainBridge,
@@ -48,3 +50,9 @@ pub use unified_platform::{
     PerformanceMetrics,
     ProcessingPhase,
 };
+
+// TODO: Re-enable when quantum_mlir_integration is complete
+// pub use quantum_mlir_integration::{
+//     QuantumMlirIntegration,
+//     QuantumGate,
+// };

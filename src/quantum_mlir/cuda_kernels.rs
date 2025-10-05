@@ -4,6 +4,7 @@
 
 use std::ffi::c_void;
 use std::os::raw::{c_int, c_double};
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
 /// CUDA complex number type matching cuDoubleComplex
 #[repr(C)]
@@ -26,6 +27,10 @@ impl CudaComplex {
         Self { real: 1.0, imag: 0.0 }
     }
 }
+
+// Implement required traits for CudaComplex to work with cudarc
+unsafe impl DeviceRepr for CudaComplex {}
+unsafe impl ValidAsZeroBits for CudaComplex {}
 
 // FFI bindings to CUDA kernels
 extern "C" {

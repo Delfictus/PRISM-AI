@@ -3,13 +3,15 @@
 //! Defines a first-class MLIR dialect for quantum computing operations
 //! with native complex number support and GPU-optimized lowering.
 
-use mlir::*;
+// use mlir::*;  // TODO: Add actual MLIR bindings when available
 use anyhow::Result;
 
+// Placeholder types until MLIR bindings are added
+pub struct MlirContext;
+
 /// Register the Quantum dialect with MLIR
-pub fn register_quantum_dialect(context: &Context) -> Result<()> {
-    let dialect = QuantumDialect::new(context);
-    context.register_dialect(dialect);
+pub fn register_quantum_dialect(_context: &MlirContext) -> Result<()> {
+    // TODO: Actually register dialect when MLIR bindings are available
     Ok(())
 }
 
@@ -26,7 +28,7 @@ pub struct QuantumDialect {
 }
 
 impl QuantumDialect {
-    pub fn new(context: &Context) -> Self {
+    pub fn new(_context: &MlirContext) -> Self {
         let mut dialect = Self {
             namespace: "quantum",
             types: Vec::new(),
@@ -104,10 +106,10 @@ impl QuantumDialect {
             name: "hadamard",
             syntax: "%result = quantum.hadamard %qubit : !quantum.qreg<1>",
             operands: vec![
-                OperandDef { name: "qubit", type: "qreg" },
+                OperandDef { name: "qubit", type_name: "qreg" },
             ],
             results: vec![
-                ResultDef { name: "result", type: "qreg" },
+                ResultDef { name: "result", type_name: "qreg" },
             ],
             attributes: vec![],
             traits: vec![OpTrait::Unitary, OpTrait::SingleQubit],
@@ -123,11 +125,11 @@ impl QuantumDialect {
             name: "cnot",
             syntax: "%result = quantum.cnot %control, %target : !quantum.qreg<2>",
             operands: vec![
-                OperandDef { name: "control", type: "qreg" },
-                OperandDef { name: "target", type: "qreg" },
+                OperandDef { name: "control", type_name: "qreg" },
+                OperandDef { name: "target", type_name: "qreg" },
             ],
             results: vec![
-                ResultDef { name: "result", type: "qreg" },
+                ResultDef { name: "result", type_name: "qreg" },
             ],
             attributes: vec![],
             traits: vec![OpTrait::Unitary, OpTrait::TwoQubit, OpTrait::Entangling],
@@ -140,22 +142,22 @@ impl QuantumDialect {
             name: "evolve",
             syntax: "%result = quantum.evolve %state, %hamiltonian, %time : !quantum.state, !quantum.operator, f64",
             operands: vec![
-                OperandDef { name: "state", type: "state" },
-                OperandDef { name: "hamiltonian", type: "operator" },
-                OperandDef { name: "time", type: "f64" },
+                OperandDef { name: "state", type_name: "state" },
+                OperandDef { name: "hamiltonian", type_name: "operator" },
+                OperandDef { name: "time", type_name: "f64" },
             ],
             results: vec![
-                ResultDef { name: "result", type: "state" },
+                ResultDef { name: "result", type_name: "state" },
             ],
             attributes: vec![
                 AttributeDef {
                     name: "method",
-                    type: AttributeType::String,
+                    type_name: AttributeType::String,
                     default: Some("trotter"),
                 },
                 AttributeDef {
                     name: "steps",
-                    type: AttributeType::Integer,
+                    type_name: AttributeType::Integer,
                     default: Some("1000"),
                 },
             ],
@@ -172,15 +174,15 @@ impl QuantumDialect {
             name: "measure",
             syntax: "%result = quantum.measure %qubit : !quantum.qreg<1> -> i1",
             operands: vec![
-                OperandDef { name: "qubit", type: "qreg" },
+                OperandDef { name: "qubit", type_name: "qreg" },
             ],
             results: vec![
-                ResultDef { name: "result", type: "i1" },
+                ResultDef { name: "result", type_name: "i1" },
             ],
             attributes: vec![
                 AttributeDef {
                     name: "basis",
-                    type: AttributeType::String,
+                    type_name: AttributeType::String,
                     default: Some("computational"),
                 },
             ],
@@ -194,15 +196,15 @@ impl QuantumDialect {
             name: "qft",
             syntax: "%result = quantum.qft %qreg : !quantum.qreg<n>",
             operands: vec![
-                OperandDef { name: "qreg", type: "qreg" },
+                OperandDef { name: "qreg", type_name: "qreg" },
             ],
             results: vec![
-                ResultDef { name: "result", type: "qreg" },
+                ResultDef { name: "result", type_name: "qreg" },
             ],
             attributes: vec![
                 AttributeDef {
                     name: "inverse",
-                    type: AttributeType::Bool,
+                    type_name: AttributeType::Bool,
                     default: Some("false"),
                 },
             ],
@@ -216,20 +218,20 @@ impl QuantumDialect {
             name: "vqe_ansatz",
             syntax: "%result = quantum.vqe_ansatz %params : tensor<f64>",
             operands: vec![
-                OperandDef { name: "params", type: "tensor" },
+                OperandDef { name: "params", type_name: "tensor" },
             ],
             results: vec![
-                ResultDef { name: "result", type: "state" },
+                ResultDef { name: "result", type_name: "state" },
             ],
             attributes: vec![
                 AttributeDef {
                     name: "layers",
-                    type: AttributeType::Integer,
+                    type_name: AttributeType::Integer,
                     default: Some("4"),
                 },
                 AttributeDef {
                     name: "entangling",
-                    type: AttributeType::String,
+                    type_name: AttributeType::String,
                     default: Some("linear"),
                 },
             ],
@@ -244,21 +246,21 @@ impl QuantumDialect {
         self.attributes.push(AttributeDefinition {
             name: "precision",
             description: "Numerical precision for quantum operations",
-            type: AttributeType::Enum(vec!["single", "double", "double_double"]),
+            type_name: AttributeType::Enum(vec!["single", "double", "double_double"]),
             default: "double",
         });
 
         self.attributes.push(AttributeDefinition {
             name: "backend",
             description: "Execution backend",
-            type: AttributeType::Enum(vec!["gpu", "cpu", "distributed"]),
+            type_name: AttributeType::Enum(vec!["gpu", "cpu", "distributed"]),
             default: "gpu",
         });
 
         self.attributes.push(AttributeDefinition {
             name: "optimization",
             description: "Optimization level",
-            type: AttributeType::Enum(vec!["O0", "O1", "O2", "O3", "Ofast"]),
+            type_name: AttributeType::Enum(vec!["O0", "O1", "O2", "O3", "Ofast"]),
             default: "O3",
         });
     }
@@ -332,19 +334,19 @@ pub struct OpDefinition {
 /// Operand definition
 pub struct OperandDef {
     pub name: &'static str,
-    pub type: &'static str,
+    pub type_name: &'static str,
 }
 
 /// Result definition
 pub struct ResultDef {
     pub name: &'static str,
-    pub type: &'static str,
+    pub type_name: &'static str,
 }
 
 /// Attribute definition
 pub struct AttributeDef {
     pub name: &'static str,
-    pub type: AttributeType,
+    pub type_name: AttributeType,
     pub default: Option<&'static str>,
 }
 
@@ -376,7 +378,7 @@ pub enum OpTrait {
 pub struct AttributeDefinition {
     pub name: &'static str,
     pub description: &'static str,
-    pub type: AttributeType,
+    pub type_name: AttributeType,
     pub default: &'static str,
 }
 

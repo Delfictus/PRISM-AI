@@ -2331,6 +2331,7 @@ name = "prct-adapters"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cudarc 0.17.3",
  "nalgebra 0.33.2",
  "ndarray",
  "neuromorphic-engine",
