@@ -23,9 +23,12 @@ pub use advanced_transfer_entropy::{
     SurrogateMethod,
 };
 
-// GPU module will be added when CUDA feature is enabled
-// #[cfg(feature = "cuda")]
-// pub mod gpu;
+// GPU-accelerated transfer entropy
+#[cfg(feature = "cuda")]
+pub mod gpu;
+
+#[cfg(feature = "cuda")]
+pub use gpu::TransferEntropyGpu;
 
 /// Information-theoretic measures for the Active Inference Platform
 pub trait InformationMeasure {

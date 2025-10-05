@@ -17,18 +17,18 @@
 //! Physical constraints: Maintains thermodynamic consistency (dS/dt ≥ 0)
 
 use std::time::Instant;
+use std::sync::Arc;
 use ndarray::{Array1, Array2};
 use anyhow::{Result, anyhow};
+use cudarc::driver::CudaContext;
 
-use crate::information_theory::TransferEntropy;
-use crate::statistical_mechanics::{ThermodynamicNetwork, ThermodynamicState, NetworkConfig};
-use crate::active_inference::{
-    HierarchicalModel, VariationalInference,
-    PolicySelector, ActiveInferenceController, SensingStrategy,
-    ObservationModel, TransitionModel,
-};
+use crate::statistical_mechanics::ThermodynamicState;
 use super::cross_domain_bridge::{CrossDomainBridge, BridgeMetrics};
-use super::quantum_mlir_integration::{QuantumMlirIntegration, QuantumGate};
+use super::ports::{NeuromorphicPort, InformationFlowPort, ThermodynamicPort, QuantumPort, ActiveInferencePort};
+use super::adapters::{
+    NeuromorphicAdapter, InformationFlowAdapter, ThermodynamicAdapter,
+    QuantumAdapter, ActiveInferenceAdapter,
+};
 
 /// Input data for the unified platform
 #[derive(Debug, Clone)]
@@ -151,27 +151,17 @@ pub enum ProcessingPhase {
     Synchronization = 7,
 }
 
-/// Unified platform integrating all components
+/// Unified platform integrating all components via hexagonal architecture
 pub struct UnifiedPlatform {
-    /// Neuromorphic spike encoding (simplified)
-    spike_threshold: f64,
-    spike_history: Vec<Array1<bool>>,
+    /// Shared CUDA context (GPU resources)
+    cuda_context: Arc<CudaContext>,
 
-    /// Transfer entropy calculator
-    te_calculator: TransferEntropy,
-
-    /// Thermodynamic network
-    thermo_network: ThermodynamicNetwork,
-
-    /// Quantum MLIR with GPU acceleration (replaces phase field analog)
-    quantum_mlir: Option<QuantumMlirIntegration>,
-    quantum_phases: Array1<f64>,
-    quantum_amplitudes: Array1<f64>,
-
-    /// Active inference components
-    hierarchical_model: HierarchicalModel,
-    inference_engine: VariationalInference,
-    controller: ActiveInferenceController,
+    /// Domain adapters (ports pattern)
+    neuromorphic: Box<dyn NeuromorphicPort>,
+    information_flow: Box<dyn InformationFlowPort>,
+    thermodynamic: Box<dyn ThermodynamicPort>,
+    quantum: Box<dyn QuantumPort>,
+    active_inference: Box<dyn ActiveInferencePort>,
 
     /// Cross-domain bridge
     bridge: CrossDomainBridge,
@@ -181,426 +171,275 @@ pub struct UnifiedPlatform {
 }
 
 impl UnifiedPlatform {
-    /// Create new unified platform
+    /// Create new unified platform with GPU acceleration
+    ///
+    /// Constitutional Requirement (Article V):
+    /// - Single shared CUDA context for all modules
+    /// - GPU-first adapters (neuromorphic, quantum, info flow)
+    /// - Hexagonal architecture with port/adapter pattern
     pub fn new(n_dimensions: usize) -> Result<Self> {
-        // Initialize thermodynamic network
-        let config = NetworkConfig {
-            n_oscillators: n_dimensions,
-            temperature: 1.0,
-            damping: 0.1,
-            dt: 0.001,
-            coupling_strength: 0.5,
-            enable_information_gating: true,
-            seed: 42,
-        };
-        let thermo_network = ThermodynamicNetwork::new(config);
+        println!("[Platform] Initializing GPU-accelerated unified platform...");
 
-        // Initialize active inference components
-        // Note: HierarchicalModel uses 900 windows internally
-        let hierarchical_model = HierarchicalModel::new();
-        let n_windows = 900; // Fixed by HierarchicalModel
-        let obs_model = ObservationModel::new(100, n_windows, 8.0, 0.01);
-        let trans_model = TransitionModel::default_timescales();
-        let inference = VariationalInference::new(
-            obs_model.clone(),
-            trans_model.clone(),
-            &hierarchical_model
-        );
+        // Step 1: Create shared CUDA context (single GPU resource pool)
+        let cuda_context = CudaContext::new(0)
+            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?;
+        println!("[Platform] ✓ CUDA context created (device 0)");
 
-        // Create controller
-        let preferred_obs = Array1::zeros(100);
-        let selector = PolicySelector::new(3, 5, preferred_obs, inference.clone(), trans_model);
-        let controller = ActiveInferenceController::new(selector, SensingStrategy::Adaptive);
+        // Step 2: Initialize GPU-accelerated adapters with shared context
 
-        // Initialize cross-domain bridge
+        // Neuromorphic: GPU reservoir for spike encoding
+        let neuromorphic = Box::new(
+            NeuromorphicAdapter::new_gpu(cuda_context.clone(), n_dimensions, 1000)?
+        ) as Box<dyn NeuromorphicPort>;
+        println!("[Platform] ✓ Neuromorphic adapter (GPU reservoir)");
+
+        // Information Flow: GPU transfer entropy computation
+        let information_flow = Box::new(
+            InformationFlowAdapter::new_gpu(cuda_context.clone(), 10, 1, 1)?
+        ) as Box<dyn InformationFlowPort>;
+        println!("[Platform] ✓ Information flow adapter (GPU transfer entropy)");
+
+        // Thermodynamic: CPU-based (GPU kernels not yet implemented)
+        let thermodynamic = Box::new(
+            ThermodynamicAdapter::new(n_dimensions)
+        ) as Box<dyn ThermodynamicPort>;
+        println!("[Platform] ⚠ Thermodynamic adapter (CPU - GPU TODO)");
+
+        // Quantum: GPU MLIR kernels
+        let quantum = Box::new(
+            QuantumAdapter::new_gpu(cuda_context.clone(), 10)?
+        ) as Box<dyn QuantumPort>;
+        println!("[Platform] ✓ Quantum adapter (GPU MLIR)");
+
+        // Active Inference: CPU-based (GPU variational inference not yet implemented)
+        let active_inference = Box::new(
+            ActiveInferenceAdapter::new(n_dimensions)
+        ) as Box<dyn ActiveInferencePort>;
+        println!("[Platform] ⚠ Active inference adapter (CPU - GPU TODO)");
+
+        // Step 3: Initialize cross-domain bridge
         let bridge = CrossDomainBridge::new(n_dimensions, 5.0);
 
-        // Initialize Quantum MLIR with GPU acceleration
-        let quantum_mlir = match QuantumMlirIntegration::new(10) {
-            Ok(qm) => {
-                println!("[Platform] ✓ Quantum MLIR initialized with GPU acceleration!");
-                Some(qm)
-            }
-            Err(e) => {
-                println!("[Platform] ⚠ Quantum MLIR unavailable: {}", e);
-                println!("[Platform] ⚠ Falling back to phase field analog");
-                None
-            }
-        };
+        println!("[Platform] GPU Integration Status:");
+        println!("[Platform]   Neuromorphic: GPU ✓");
+        println!("[Platform]   Info Flow: GPU ✓");
+        println!("[Platform]   Thermodynamic: CPU (TODO)");
+        println!("[Platform]   Quantum: GPU ✓");
+        println!("[Platform]   Active Inference: CPU (TODO)");
+        println!("[Platform] Constitutional compliance: 3/5 modules on GPU");
 
         Ok(Self {
-            spike_threshold: 0.5,
-            spike_history: Vec::new(),
-            te_calculator: TransferEntropy::new(10, 1, 1),
-            thermo_network,
-            quantum_mlir,
-            quantum_phases: Array1::zeros(n_dimensions),
-            quantum_amplitudes: Array1::ones(n_dimensions),
-            hierarchical_model,
-            inference_engine: inference,
-            controller,
+            cuda_context,
+            neuromorphic,
+            information_flow,
+            thermodynamic,
+            quantum,
+            active_inference,
             bridge,
             n_dimensions,
         })
     }
 
-    /// Phase 1: Neuromorphic encoding (simplified spike encoding)
-    fn neuromorphic_encoding(&mut self, input: &Array1<f64>) -> (Array1<bool>, f64) {
+    /// Phase 1: Neuromorphic encoding (GPU-accelerated reservoir)
+    ///
+    /// Constitutional: Delegates to NeuromorphicPort (GPU adapter)
+    fn neuromorphic_encoding(&mut self, input: &Array1<f64>) -> Result<(Array1<bool>, f64)> {
         let start = Instant::now();
 
-        // Simple threshold-based spike encoding
-        let spikes = input.mapv(|x| x > self.spike_threshold);
-
-        // Store in history for temporal processing
-        self.spike_history.push(spikes.clone());
-        if self.spike_history.len() > 100 {
-            self.spike_history.remove(0);
-        }
+        // Delegate to adapter (GPU reservoir)
+        let spikes = self.neuromorphic.encode_spikes(input)?;
 
         let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (spikes, latency)
+        Ok((spikes, latency))
     }
 
-    /// Phase 2: Information flow analysis using transfer entropy
-    fn information_flow_analysis(&mut self, data: &Array1<f64>) -> (Array2<f64>, f64) {
+    /// Phase 2: Information flow analysis (GPU transfer entropy)
+    ///
+    /// Constitutional: Delegates to InformationFlowPort (GPU adapter)
+    fn information_flow_analysis(&mut self) -> Result<(Array2<f64>, f64)> {
         let start = Instant::now();
 
-        let n = self.n_dimensions.min(10); // Limit for performance
-        let mut te_matrix = Array2::zeros((n, n));
+        // Get spike history from neuromorphic adapter
+        let spike_history = self.neuromorphic.get_spike_history();
 
-        // Compute pairwise transfer entropy (simplified)
-        for i in 0..n {
-            for j in 0..n {
-                if i != j && self.spike_history.len() > 20 {
-                    // Use recent history
-                    let source: Array1<f64> = self.spike_history.iter()
-                        .rev().take(20)
-                        .map(|s| if s[i] { 1.0 } else { 0.0 })
-                        .collect::<Vec<_>>().into();
-                    let target: Array1<f64> = self.spike_history.iter()
-                        .rev().take(20)
-                        .map(|s| if s[j] { 1.0 } else { 0.0 })
-                        .collect::<Vec<_>>().into();
-
-                    let result = self.te_calculator.calculate(&source, &target);
-                    te_matrix[[i, j]] = result.te_value;
-                }
-            }
-        }
-
-        let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (te_matrix, latency)
-    }
-
-    /// Phase 3: Coupling matrix computation
-    fn compute_coupling_matrix(&mut self, te_matrix: &Array2<f64>) -> (Array2<f64>, f64) {
-        let start = Instant::now();
-
-        // Normalize transfer entropy to coupling strengths
-        let max_te = te_matrix.iter().cloned().fold(0.0f64, f64::max);
-        let coupling = if max_te > 1e-10 {
-            te_matrix / max_te
+        // Delegate coupling matrix computation to adapter (GPU TE)
+        let coupling = if spike_history.len() > 20 {
+            self.information_flow.compute_coupling_matrix(spike_history)?
         } else {
             Array2::eye(self.n_dimensions)
         };
 
-        // Update thermodynamic network coupling
-        // Use built-in information flow update with reasonable parameters
-        self.thermo_network.update_coupling_from_information_flow(10, 0.1);
-
         let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (coupling, latency)
+        Ok((coupling, latency))
     }
 
-    /// Phase 4: Thermodynamic evolution
-    fn thermodynamic_evolution(&mut self, dt: f64) -> (ThermodynamicState, f64) {
+    /// Phase 3-4: Thermodynamic evolution under information flow coupling
+    ///
+    /// Constitutional: Delegates to ThermodynamicPort
+    fn thermodynamic_evolution(&mut self, coupling: &Array2<f64>, dt: f64) -> Result<(ThermodynamicState, f64)> {
         let start = Instant::now();
 
-        // Evolve network maintaining dS/dt ≥ 0
-        let n_steps = (dt / 0.001) as usize; // Convert to steps
-        let result = self.thermo_network.evolve(n_steps.max(1));
+        // Delegate to adapter (CPU thermodynamics for now, GPU TODO)
+        let state = self.thermodynamic.evolve(coupling, dt)?;
 
-        // Verify 2nd law
-        let entropy_prod = result.metrics.entropy_production_rate;
-        assert!(entropy_prod >= -1e-10, // Allow tiny numerical error
-            "Entropy production violation: {}", entropy_prod);
-
-        let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (result.state.clone(), latency)
-    }
-
-    /// Phase 5: Quantum processing (GPU-accelerated with MLIR or fallback)
-    fn quantum_processing(&mut self, thermo_state: &ThermodynamicState) -> (Array1<f64>, f64) {
-        let start = Instant::now();
-
-        // Use Quantum MLIR if available (GPU-accelerated)
-        if let Some(ref quantum_mlir) = self.quantum_mlir {
-            // Apply quantum gates based on thermodynamic state
-            let gates = vec![
-                QuantumGate::Hadamard(0),  // Create superposition
-                QuantumGate::RZ(0, thermo_state.phases[0]),  // Phase rotation
-            ];
-
-            if let Err(e) = quantum_mlir.apply_gates(gates) {
-                println!("[Platform] Quantum MLIR error: {}", e);
-            }
-
-            // Get quantum state and extract observables
-            if let Ok(qstate) = quantum_mlir.get_state() {
-                // Convert complex amplitudes to real observables
-                for (i, amp) in qstate.amplitudes.iter().take(self.n_dimensions).enumerate() {
-                    self.quantum_amplitudes[i] = (amp.real * amp.real + amp.imag * amp.imag).sqrt();
-                    self.quantum_phases[i] = amp.imag.atan2(amp.real);
-                }
-            }
-        } else {
-            // Fallback to original phase field analog
-            let n = self.n_dimensions.min(thermo_state.phases.len());
-            for i in 0..n {
-                self.quantum_phases[i] = thermo_state.phases[i];
-                self.quantum_amplitudes[i] *= (-0.01 * thermo_state.energy).exp();
-            }
+        // Verify 2nd law (constitutional requirement)
+        let entropy_prod = self.thermodynamic.entropy_production();
+        if entropy_prod < -1e-10 {
+            return Err(anyhow!("Entropy production violation: {} < 0", entropy_prod));
         }
 
-        // Normalize amplitudes
-        let norm = self.quantum_amplitudes.mapv(|a| a * a).sum().sqrt();
-        if norm > 1e-10 {
-            self.quantum_amplitudes /= norm;
-        }
-
-        // Quantum observable
-        let observable = &self.quantum_amplitudes * &self.quantum_phases.mapv(f64::cos);
-
         let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (observable, latency)
+        Ok((state, latency))
     }
 
-    /// Phase 6: Active inference
-    fn active_inference(&mut self, observations: &Array1<f64>) -> (Array1<f64>, f64, f64) {
+    /// Phase 5: Quantum processing (GPU MLIR kernels)
+    ///
+    /// Constitutional: Delegates to QuantumPort (GPU adapter)
+    fn quantum_processing(&mut self, thermo_state: &ThermodynamicState) -> Result<(Array1<f64>, f64)> {
         let start = Instant::now();
 
-        // Resize observations to 100 dimensions for ObservationModel compatibility
-        // ObservationModel expects 100-dim observations, HierarchicalModel has 900 state dims
-        let obs_resized = if observations.len() != 100 {
-            let mut resized = Array1::zeros(100);
-            let n_copy = observations.len().min(100);
-            for i in 0..n_copy {
-                resized[i] = observations[i];
-            }
-            resized
-        } else {
-            observations.clone()
-        };
+        // Delegate to adapter (GPU quantum MLIR)
+        let observable = self.quantum.quantum_process(thermo_state)?;
 
-        // Update beliefs via variational inference
-        self.inference_engine.update_beliefs(&mut self.hierarchical_model, &obs_resized);
-        let free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
+        let latency = start.elapsed().as_secs_f64() * 1000.0;
+        Ok((observable, latency))
+    }
+
+    /// Phase 6: Active inference (variational free energy minimization)
+    ///
+    /// Constitutional: Delegates to ActiveInferencePort
+    fn active_inference(&mut self, observations: &Array1<f64>, quantum_obs: &Array1<f64>, targets: &Array1<f64>) -> Result<(Array1<f64>, f64, f64)> {
+        let start = Instant::now();
+
+        // Delegate inference to adapter (CPU for now, GPU TODO)
+        let free_energy = self.active_inference.infer(observations, quantum_obs)?;
 
         // CONSTITUTIONAL REQUIREMENT: Free energy must be finite
-        // Now properly computed, so should always be finite
-        debug_assert!(free_energy.is_finite(), "Free energy must be finite - check hierarchical_model.rs");
+        if !free_energy.is_finite() {
+            return Err(anyhow!("Free energy is not finite: {}", free_energy));
+        }
 
         // Select optimal action
-        let action = self.controller.control(&self.hierarchical_model);
+        let action = self.active_inference.select_action(targets)?;
 
         let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (action.phase_correction, latency, free_energy)
+        Ok((action, latency, free_energy))
     }
 
-    /// Phase 7: Control application
-    fn apply_control(&mut self, control: &Array1<f64>, target: &Array1<f64>) -> (Array1<f64>, f64) {
+    /// Phase 7-8: Cross-domain synchronization (simplified)
+    fn synchronize_domains(&mut self, dt: f64) -> Result<(BridgeMetrics, f64)> {
         let start = Instant::now();
 
-        // Handle dimension mismatch (hierarchical model has 900 windows, target may have different size)
-        let n_control = control.len();
-        let n_state = self.hierarchical_model.level1.belief.mean.len();
+        // Get quantum observables from adapter
+        let quantum_obs = self.quantum.get_observables();
 
-        // Resize target to match state dimensions if needed
-        let target_resized = if target.len() != n_state {
-            // Create zero-padded or truncated target
-            let mut t = Array1::zeros(n_state);
-            let n_copy = target.len().min(n_state);
-            for i in 0..n_copy {
-                t[i] = target[i];
-            }
-            t
-        } else {
-            target.clone()
-        };
+        // Map to bridge
+        let n_dims = self.n_dimensions.min(quantum_obs.len());
+        self.bridge.quantum_state.phases = quantum_obs.iter()
+            .take(n_dims)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into();
 
-        // Resize control to match state dimensions
-        let control_resized = if n_control != n_state {
-            // Extend or truncate control
-            let mut c = Array1::zeros(n_state);
-            let n_copy = n_control.min(n_state);
-            for i in 0..n_copy {
-                c[i] = control[i];
-            }
-            c
-        } else {
-            control.clone()
-        };
-
-        // Combine control with target-tracking
-        let error = &target_resized - &self.hierarchical_model.level1.belief.mean;
-        let gain = 0.7;
-        let control_signal = &control_resized - &(gain * &error);
-
-        // Apply to system state
-        self.hierarchical_model.level1.belief.mean =
-            &self.hierarchical_model.level1.belief.mean + &(0.1 * &control_signal);
-
-        // Return control signal in requested dimensions
-        let output_signal = if n_control != n_state {
-            control_signal.iter().take(n_control).cloned().collect::<Vec<_>>().into()
-        } else {
-            control_signal.clone()
-        };
-
-        let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (output_signal, latency)
-    }
-
-    /// Phase 8: Cross-domain synchronization
-    fn synchronize_domains(&mut self, dt: f64) -> (BridgeMetrics, f64) {
-        let start = Instant::now();
-
-        // Map states to domains (truncate to bridge dimensions)
-        let n_dims = self.n_dimensions.min(self.hierarchical_model.level1.belief.mean.len());
-        self.bridge.neuro_state.state_vector = self.hierarchical_model.level1.belief.mean
-            .iter().take(n_dims).cloned().collect::<Vec<_>>().into();
-        self.bridge.quantum_state.phases = self.quantum_phases.clone();
-
-        // Bidirectional synchronization step
+        // Bidirectional synchronization
         let metrics = self.bridge.bidirectional_step(dt);
 
-        // Update phases from bridge
-        self.quantum_phases = self.bridge.quantum_state.phases.clone();
-
         let latency = start.elapsed().as_secs_f64() * 1000.0;
-        (metrics, latency)
+        Ok((metrics, latency))
     }
 
-    /// Execute complete processing pipeline
+    /// Execute complete processing pipeline (GPU-accelerated hexagonal architecture)
+    ///
+    /// Constitutional: All phases delegate to adapters (ports pattern)
     pub fn process(&mut self, input: PlatformInput) -> Result<PlatformOutput> {
         let total_start = Instant::now();
         let mut phase_latencies = [0.0; 8];
 
-        // Phase 1: Neuromorphic encoding
-        let (spikes, lat1) = self.neuromorphic_encoding(&input.sensory_data);
+        // Phase 1: Neuromorphic encoding (GPU reservoir)
+        let (_spikes, lat1) = self.neuromorphic_encoding(&input.sensory_data)?;
         phase_latencies[0] = lat1;
 
-        // Phase 2: Information flow analysis
-        let (te_matrix, lat2) = self.information_flow_analysis(&input.sensory_data);
+        // Phase 2: Information flow analysis (GPU transfer entropy)
+        let (coupling, lat2) = self.information_flow_analysis()?;
         phase_latencies[1] = lat2;
+        phase_latencies[2] = 0.0; // Merged phase 3 into phase 2
 
-        // Phase 3: Coupling matrix
-        let (coupling, lat3) = self.compute_coupling_matrix(&te_matrix);
-        phase_latencies[2] = lat3;
-
-        // Phase 4: Thermodynamic evolution
-        let (thermo_state, lat4) = self.thermodynamic_evolution(input.dt);
+        // Phase 4: Thermodynamic evolution (CPU for now)
+        let (thermo_state, lat4) = self.thermodynamic_evolution(&coupling, input.dt)?;
         phase_latencies[3] = lat4;
 
-        // Phase 5: Quantum processing
-        let (quantum_obs, lat5) = self.quantum_processing(&thermo_state);
+        // Phase 5: Quantum processing (GPU MLIR)
+        let (quantum_obs, lat5) = self.quantum_processing(&thermo_state)?;
         phase_latencies[4] = lat5;
 
-        // Phase 6: Active inference
-        let (control, lat6, free_energy) = self.active_inference(&quantum_obs);
+        // Phase 6: Active inference (CPU for now)
+        let (control_signals, lat6, free_energy) = self.active_inference(&input.sensory_data, &quantum_obs, &input.targets)?;
         phase_latencies[5] = lat6;
-
-        // Phase 7: Control application
-        let (control_signals, lat7) = self.apply_control(&control, &input.targets);
-        phase_latencies[6] = lat7;
+        phase_latencies[6] = 0.0; // Simplified control into phase 6
 
         // Phase 8: Cross-domain synchronization
-        let (bridge_metrics, lat8) = self.synchronize_domains(input.dt);
+        let (bridge_metrics, lat8) = self.synchronize_domains(input.dt)?;
         phase_latencies[7] = lat8;
 
         // Collect metrics
         let total_latency = total_start.elapsed().as_secs_f64() * 1000.0;
+        let entropy_production = self.thermodynamic.entropy_production();
 
-        // Get entropy production from last evolution
-        let entropy_production = if self.thermo_network.entropy_history().len() > 1 {
-            let history = self.thermo_network.entropy_history();
-            let n = history.len();
-            let delta_s = history[n-1] - history[n-2];
-            let ds_dt = delta_s / input.dt;
-
-            // CONSTITUTIONAL REQUIREMENT: 2nd Law of Thermodynamics
-            // Entropy production must be non-negative
-            if ds_dt < -1e-10 {  // Allow tiny numerical error
-                eprintln!("❌ CONSTITUTION VIOLATION: 2nd Law violated!");
-                eprintln!("❌ Entropy production: {:.6} < 0", ds_dt);
-                eprintln!("❌ Delta S: {:.6}, dt: {:.6}", delta_s, input.dt);
-                panic!("2nd Law of Thermodynamics violated - this is a bug in thermodynamic evolution");
-            }
-
-            ds_dt.max(0.0)  // Clamp tiny numerical errors to exactly 0
-        } else {
-            // First iteration - no entropy change yet (valid)
-            0.0
-        };
+        // CONSTITUTIONAL VERIFICATION
+        if entropy_production < -1e-10 {
+            return Err(anyhow!("CONSTITUTION VIOLATION: 2nd Law violated! dS/dt = {}", entropy_production));
+        }
+        if !free_energy.is_finite() {
+            return Err(anyhow!("CONSTITUTION VIOLATION: Free energy not finite: {}", free_energy));
+        }
 
         let metrics = PerformanceMetrics {
             total_latency_ms: total_latency,
             phase_latencies,
             free_energy,
-            entropy_production,
+            entropy_production: entropy_production.max(0.0),
             mutual_information: bridge_metrics.mutual_information,
             phase_coherence: bridge_metrics.phase_coherence,
         };
 
-        // Report requirements status (don't error - just inform)
+        // Report requirements status
         if !metrics.meets_requirements() {
-            eprintln!("⚠ Performance requirements not fully met (non-critical):\n{}", metrics.report());
+            eprintln!("⚠ Performance requirements not fully met:\n{}", metrics.report());
         }
 
-        // Generate output
+        // Generate predictions (placeholder - should come from active inference adapter)
+        let predictions = Array1::zeros(input.sensory_data.len());
+        let uncertainties = Array1::ones(input.sensory_data.len());
+
         Ok(PlatformOutput {
             control_signals,
-            predictions: self.inference_engine.predict_observations(&self.hierarchical_model),
-            uncertainties: self.hierarchical_model.level1.belief.variance.clone(),
+            predictions,
+            uncertainties,
             metrics,
         })
     }
 
     /// Initialize system with random state
     pub fn initialize(&mut self) {
-        // Thermodynamic network initializes itself in new()
+        // Adapters initialize themselves in new()
         self.bridge.initialize();
-
-        // Initialize quantum phases
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        for phase in self.quantum_phases.iter_mut() {
-            *phase = rng.gen::<f64>() * 2.0 * std::f64::consts::PI;
-        }
     }
 
-    /// Check thermodynamic consistency across all phases
+    /// Check thermodynamic consistency (constitutional verification)
     pub fn verify_thermodynamic_consistency(&self) -> Result<()> {
-        // Check entropy production via history
-        let entropy_history = self.thermo_network.entropy_history();
-        if entropy_history.len() > 1 {
-            let delta_s = entropy_history[entropy_history.len()-1] - entropy_history[entropy_history.len()-2];
-            if delta_s < -1e-10 {
-                return Err(anyhow!(
-                    "Entropy production violation: {} < 0",
-                    delta_s
-                ));
-            }
+        // Check entropy production via adapter
+        let entropy_prod = self.thermodynamic.entropy_production();
+        if entropy_prod < -1e-10 {
+            return Err(anyhow!(
+                "CONSTITUTION VIOLATION: Entropy production {} < 0",
+                entropy_prod
+            ));
         }
-
-        // Check energy conservation (within numerical tolerance)
-        let total_energy = self.thermo_network.state().energy
-            + self.hierarchical_model.compute_free_energy(&Array1::zeros(100));
 
         // Check information bounds
         if self.bridge.channel.state.mutual_information < 0.0 {
             return Err(anyhow!(
-                "Mutual information violation: {} < 0",
+                "CONSTITUTION VIOLATION: Mutual information {} < 0",
                 self.bridge.channel.state.mutual_information
             ));
         }
@@ -625,7 +464,7 @@ mod tests {
         let input = Array1::from_vec(vec![0.3, 0.7, 0.4, 0.9, 0.2, 0.6, 0.8, 0.1, 0.5, 0.75,
                                           0.3, 0.7, 0.4, 0.9, 0.2, 0.6, 0.8, 0.1, 0.5, 0.75]);
 
-        let (spikes, latency) = platform.neuromorphic_encoding(&input);
+        let (spikes, latency) = platform.neuromorphic_encoding(&input).unwrap();
 
         assert_eq!(spikes.len(), 20);
         assert!(latency < 1.0); // Should be very fast

@@ -22,6 +22,8 @@ pub mod information_channel;
 pub mod synchronization;
 pub mod unified_platform;
 pub mod quantum_mlir_integration;
+pub mod ports;
+pub mod adapters;
 
 pub use cross_domain_bridge::{
     CrossDomainBridge,
@@ -53,4 +55,20 @@ pub use unified_platform::{
 pub use quantum_mlir_integration::{
     QuantumMlirIntegration,
     QuantumGate,
+};
+
+pub use ports::{
+    NeuromorphicPort,
+    InformationFlowPort,
+    ThermodynamicPort,
+    QuantumPort,
+    ActiveInferencePort,
+};
+
+pub use adapters::{
+    NeuromorphicAdapter,
+    InformationFlowAdapter,
+    ThermodynamicAdapter,
+    QuantumAdapter,
+    ActiveInferenceAdapter,
 };
