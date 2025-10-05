@@ -76,6 +76,7 @@ parking_lot = "0.12"
 cudarc = { version = "0.17", features = ["driver", "nvrtc", "cublas", "curand"] }
 candle-core = { version = "0.9", features = ["cuda"] }
 candle-nn = "0.9"
+colored = "2.1"
 
 [[example]]
 name = "platform_demo"
