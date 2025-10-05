@@ -23,7 +23,7 @@ __device__ __forceinline__ cuDoubleComplex complex_exp(double theta) {
 }
 
 // Quantum Hadamard gate kernel
-__global__ void hadamard_gate_kernel(
+extern "C" __global__ void hadamard_gate_kernel(
     cuDoubleComplex* state,
     int qubit_index,
     int num_qubits
@@ -50,7 +50,7 @@ __global__ void hadamard_gate_kernel(
 }
 
 // CNOT gate kernel
-__global__ void cnot_gate_kernel(
+extern "C" __global__ void cnot_gate_kernel(
     cuDoubleComplex* state,
     int control_qubit,
     int target_qubit,
@@ -77,7 +77,7 @@ __global__ void cnot_gate_kernel(
 }
 
 // Time evolution kernel using Trotter-Suzuki decomposition
-__global__ void time_evolution_kernel(
+extern "C" __global__ void time_evolution_kernel(
     cuDoubleComplex* state,
     const cuDoubleComplex* hamiltonian,
     double time_step,
@@ -113,7 +113,7 @@ __global__ void time_evolution_kernel(
 }
 
 // Quantum Fourier Transform kernel
-__global__ void qft_kernel(
+extern "C" __global__ void qft_kernel(
     cuDoubleComplex* state,
     int num_qubits,
     bool inverse
@@ -145,7 +145,7 @@ __global__ void qft_kernel(
 }
 
 // VQE ansatz kernel for variational quantum algorithms
-__global__ void vqe_ansatz_kernel(
+extern "C" __global__ void vqe_ansatz_kernel(
     cuDoubleComplex* state,
     const double* parameters,
     int num_qubits,
@@ -194,7 +194,7 @@ __global__ void vqe_ansatz_kernel(
 }
 
 // Measurement kernel - calculates probabilities
-__global__ void measurement_kernel(
+extern "C" __global__ void measurement_kernel(
     const cuDoubleComplex* state,
     double* probabilities,
     int dimension

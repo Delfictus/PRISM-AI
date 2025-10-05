@@ -47,11 +47,25 @@ impl QuantumGpuKernels {
         // Load PTX module at runtime
         println!("[Quantum PTX] Loading quantum_mlir.ptx...");
 
-        let ptx_path = "target/ptx/quantum_mlir.ptx";
-        let ptx_source = std::fs::read_to_string(ptx_path)
-            .with_context(|| format!("Failed to read PTX file: {}", ptx_path))?;
+        // Try multiple possible PTX locations
+        let ptx_paths = vec![
+            "target/ptx/quantum_mlir.ptx",
+            "../target/ptx/quantum_mlir.ptx",
+            "../../target/ptx/quantum_mlir.ptx",
+            concat!(env!("OUT_DIR"), "/quantum_mlir.ptx"),
+        ];
 
-        println!("[Quantum PTX] PTX file loaded ({} bytes)", ptx_source.len());
+        let mut ptx_path = None;
+        for path in &ptx_paths {
+            if std::path::Path::new(path).exists() {
+                ptx_path = Some(*path);
+                println!("[Quantum PTX] Found PTX at: {}", path);
+                break;
+            }
+        }
+
+        let ptx_path = ptx_path
+            .ok_or_else(|| anyhow::anyhow!("quantum_mlir.ptx not found in any expected location"))?;
 
         // Load PTX module
         let ptx = cudarc::nvrtc::Ptx::from_file(ptx_path);
@@ -68,7 +82,7 @@ impl QuantumGpuKernels {
             "cnot_gate_kernel",
             "qft_kernel",
             "vqe_ansatz_kernel",
-            "measure_kernel",
+            "measurement_kernel",  // Note: it's "measurement" not "measure" in PTX
         ];
 
         for name in kernel_names {
@@ -250,8 +264,8 @@ impl QuantumGpuKernels {
         let num_blocks = (dimension + 255) / 256;
         let num_threads = 256;
 
-        let func = self.kernels.get("measure_kernel")
-            .ok_or_else(|| anyhow::anyhow!("Measure kernel not loaded"))?;
+        let func = self.kernels.get("measurement_kernel")
+            .ok_or_else(|| anyhow::anyhow!("Measurement kernel not loaded"))?;
 
         let config = LaunchConfig {
             grid_dim: (num_blocks as u32, 1, 1),
