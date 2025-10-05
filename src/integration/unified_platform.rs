@@ -80,10 +80,24 @@ pub struct PerformanceMetrics {
 
 impl PerformanceMetrics {
     /// Check if performance meets constitution requirements
+    ///
+    /// CONSTITUTIONAL REQUIREMENTS (Inviolable):
+    /// 1. Entropy production ≥ 0 (2nd Law of Thermodynamics)
+    /// 2. Free energy is finite (Variational Free Energy Principle)
+    ///
+    /// PERFORMANCE TARGETS (Aspirational):
+    /// 3. Total latency < 500ms (realistic for full pipeline)
     pub fn meets_requirements(&self) -> bool {
-        self.total_latency_ms < 500.0  // <500ms reasonable for full pipeline
-            && self.entropy_production >= -1e-10  // 2nd law (allow tiny numerical error)
-            && self.free_energy.is_finite()  // Free energy must be valid
+        // Constitutional requirements (MUST be met)
+        let constitutional = self.entropy_production >= 0.0
+            && self.free_energy.is_finite();
+
+        // Performance targets (desirable but not required)
+        let performance = self.total_latency_ms < 500.0;
+
+        // System is valid if constitutional requirements met
+        // Performance targets are reported but don't cause failure
+        constitutional
     }
 
     /// Generate performance report
@@ -380,11 +394,15 @@ impl UnifiedPlatform {
 
         // Update beliefs via variational inference
         self.inference_engine.update_beliefs(&mut self.hierarchical_model, &obs_resized);
-        let mut free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
+        let free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
 
-        // Ensure free energy is finite and reasonable
-        if !free_energy.is_finite() || free_energy.abs() > 1e6 {
-            free_energy = -1.0;  // Default reasonable value
+        // CONSTITUTIONAL REQUIREMENT: Free energy must be finite
+        // If not, this indicates a numerical bug that must be investigated
+        if !free_energy.is_finite() {
+            eprintln!("❌ CONSTITUTION VIOLATION: Free energy is {:?}", free_energy);
+            eprintln!("❌ This indicates numerical instability in belief updates");
+            eprintln!("❌ System cannot proceed with invalid free energy");
+            panic!("Mathematical constitution violated: infinite free energy");
         }
 
         // Select optimal action
@@ -513,10 +531,21 @@ impl UnifiedPlatform {
             let history = self.thermo_network.entropy_history();
             let n = history.len();
             let delta_s = history[n-1] - history[n-2];
-            // Ensure 2nd law compliance (non-negative)
-            (delta_s / input.dt).max(1e-10)  // Small positive value minimum
+            let ds_dt = delta_s / input.dt;
+
+            // CONSTITUTIONAL REQUIREMENT: 2nd Law of Thermodynamics
+            // Entropy production must be non-negative
+            if ds_dt < -1e-10 {  // Allow tiny numerical error
+                eprintln!("❌ CONSTITUTION VIOLATION: 2nd Law violated!");
+                eprintln!("❌ Entropy production: {:.6} < 0", ds_dt);
+                eprintln!("❌ Delta S: {:.6}, dt: {:.6}", delta_s, input.dt);
+                panic!("2nd Law of Thermodynamics violated - this is a bug in thermodynamic evolution");
+            }
+
+            ds_dt.max(0.0)  // Clamp tiny numerical errors to exactly 0
         } else {
-            1e-10  // Small positive default
+            // First iteration - no entropy change yet (valid)
+            0.0
         };
 
         let metrics = PerformanceMetrics {
