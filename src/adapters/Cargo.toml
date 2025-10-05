@@ -15,9 +15,7 @@ neuromorphic-engine = { path = "../neuromorphic", default-features = false, feat
 quantum-engine = { path = "../quantum" }
 platform-foundation = { path = "../foundation" }
 
-# New quantum abstraction layer (replaces direct cudarc for quantum ops)
-csf-quantum = { path = "../csf-quantum" }
-csf-mlir = { path = "../csf-mlir" }
+# Quantum MLIR support will be in main crate
 
 # Utilities
 anyhow = "1.0"

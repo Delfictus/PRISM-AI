@@ -17,8 +17,6 @@ members = [
     "src/adapters",
     "src/mathematics",
     "validation",
-    "src/csf-mlir",
-    "src/csf-quantum",
 ]
 
 [features]
@@ -43,8 +41,6 @@ shared-types = { path = "src/shared-types" }
 prct-core = { path = "src/prct-core" }
 prct-adapters = { path = "src/adapters" }
 mathematics = { path = "src/mathematics" }
-csf-mlir = { path = "src/csf-mlir" }
-csf-quantum = { path = "src/csf-quantum" }
 
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

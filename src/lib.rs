@@ -28,16 +28,8 @@ pub mod cuda_bindings;
 #[cfg(feature = "mlir")]
 pub mod mlir_runtime;
 
-// MLIR support (when available)
-#[cfg(feature = "mlir")]
-pub mod csf_mlir {
-    pub use csf_mlir::*;
-}
-
-#[cfg(feature = "mlir")]
-pub mod csf_quantum {
-    pub use csf_quantum::*;
-}
+// Quantum MLIR Dialect - First-class GPU acceleration with native complex support!
+pub mod quantum_mlir;
 
 // Re-export key components
 pub use mathematics::{
