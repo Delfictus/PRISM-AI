@@ -20,9 +20,9 @@ pub mod resilience;
 pub mod optimization;
 pub mod cma; // Phase 6: Causal Manifold Annealing
 
-// GPU acceleration modules
-#[cfg(feature = "cuda")]
-pub mod cuda_bindings;
+// GPU acceleration modules (OBSOLETE - quantum_mlir replaces this)
+// #[cfg(feature = "cuda")]
+// pub mod cuda_bindings;
 
 // MLIR runtime for JIT compilation
 #[cfg(feature = "mlir")]

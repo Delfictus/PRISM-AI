@@ -53,8 +53,14 @@ struct CudaDeviceProp {
 // ============================================================================
 // Quantum Evolution Kernel FFI
 // ============================================================================
+// NOTE: Object files linked directly by build.rs - no library needed
+// ============================================================================
 
-#[link(name = "quantum_kernels")]
+// Object files linked by build.rs:
+//   quantum_evolution.o
+//   quantum_mlir.o
+// No #[link] attribute needed - prevents "cannot find -lquantum_kernels" error
+
 extern "C" {
     // Initialize quantum evolution system
     fn quantum_evolution_init(system_size: i32) -> *mut c_void;
@@ -121,8 +127,13 @@ extern "C" {
 // ============================================================================
 // Double-Double Arithmetic FFI
 // ============================================================================
+// NOTE: Object file linked directly by build.rs - no library needed
+// ============================================================================
 
-#[link(name = "dd_kernels")]
+// Object file linked by build.rs:
+//   double_double.o
+// No #[link] attribute needed - prevents "cannot find -ldd_kernels" error
+
 extern "C" {
     // Test double-double arithmetic
     fn run_dd_test();
