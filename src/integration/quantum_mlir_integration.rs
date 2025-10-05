@@ -186,18 +186,19 @@ impl QuantumMlirIntegration {
     }
 
     /// Interface with neuromorphic system
-    pub fn couple_with_neuromorphic(&self, neuro_state: &NeuroQuantumState) -> Result<f64> {
-        // Calculate coupling strength based on quantum coherence and neural activity
-        let quantum_state = self.get_state()?;
-
-        // Calculate quantum coherence
-        let coherence = self.calculate_coherence(&quantum_state);
-
-        // Combine with neural oscillations
-        let coupling = coherence * neuro_state.oscillator_strength;
-
-        Ok(coupling)
-    }
+    /// TODO: Define NeuroQuantumState type when neuromorphic coupling is implemented
+    // pub fn couple_with_neuromorphic(&self, neuro_state: &NeuroQuantumState) -> Result<f64> {
+    //     // Calculate coupling strength based on quantum coherence and neural activity
+    //     let quantum_state = self.get_state()?;
+    //
+    //     // Calculate quantum coherence
+    //     let coherence = self.calculate_coherence(&quantum_state);
+    //
+    //     // Combine with neural oscillations
+    //     let coupling = coherence * neuro_state.oscillator_strength;
+    //
+    //     Ok(coupling)
+    // }
 
     /// Calculate quantum coherence
     fn calculate_coherence(&self, state: &QuantumState) -> f64 {

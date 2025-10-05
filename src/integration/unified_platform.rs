@@ -28,8 +28,7 @@ use crate::active_inference::{
     ObservationModel, TransitionModel,
 };
 use super::cross_domain_bridge::{CrossDomainBridge, BridgeMetrics};
-// TODO: Re-enable when quantum_mlir_integration is complete
-// use super::quantum_mlir_integration::{QuantumMlirIntegration, QuantumGate};
+use super::quantum_mlir_integration::{QuantumMlirIntegration, QuantumGate};
 
 /// Input data for the unified platform
 #[derive(Debug, Clone)]
@@ -151,7 +150,7 @@ pub struct UnifiedPlatform {
     thermo_network: ThermodynamicNetwork,
 
     /// Quantum MLIR with GPU acceleration (replaces phase field analog)
-    // quantum_mlir: Option<// QuantumMlirIntegration>,
+    quantum_mlir: Option<QuantumMlirIntegration>,
     quantum_phases: Array1<f64>,
     quantum_amplitudes: Array1<f64>,
 
@@ -202,15 +201,25 @@ impl UnifiedPlatform {
         // Initialize cross-domain bridge
         let bridge = CrossDomainBridge::new(n_dimensions, 5.0);
 
-        // TODO: Re-enable Quantum MLIR when integration is complete
-        // let quantum_mlir = QuantumMlirIntegration::new(10)?;
+        // Initialize Quantum MLIR with GPU acceleration
+        let quantum_mlir = match QuantumMlirIntegration::new(10) {
+            Ok(qm) => {
+                println!("[Platform] ✓ Quantum MLIR initialized with GPU acceleration!");
+                Some(qm)
+            }
+            Err(e) => {
+                println!("[Platform] ⚠ Quantum MLIR unavailable: {}", e);
+                println!("[Platform] ⚠ Falling back to phase field analog");
+                None
+            }
+        };
 
         Ok(Self {
             spike_threshold: 0.5,
             spike_history: Vec::new(),
             te_calculator: TransferEntropy::new(10, 1, 1),
             thermo_network,
-            // quantum_mlir: None,  // Commented out
+            quantum_mlir,
             quantum_phases: Array1::zeros(n_dimensions),
             quantum_amplitudes: Array1::ones(n_dimensions),
             hierarchical_model,
@@ -310,18 +319,34 @@ impl UnifiedPlatform {
     fn quantum_processing(&mut self, thermo_state: &ThermodynamicState) -> (Array1<f64>, f64) {
         let start = Instant::now();
 
-        // TODO: Re-enable when Quantum MLIR is complete
         // Use Quantum MLIR if available (GPU-accelerated)
-        // if let Some(ref quantum_mlir) = self.quantum_mlir {
-        //     ...
-        // } else {
+        if let Some(ref quantum_mlir) = self.quantum_mlir {
+            // Apply quantum gates based on thermodynamic state
+            let gates = vec![
+                QuantumGate::Hadamard(0),  // Create superposition
+                QuantumGate::RZ(0, thermo_state.phases[0]),  // Phase rotation
+            ];
+
+            if let Err(e) = quantum_mlir.apply_gates(gates) {
+                println!("[Platform] Quantum MLIR error: {}", e);
+            }
+
+            // Get quantum state and extract observables
+            if let Ok(qstate) = quantum_mlir.get_state() {
+                // Convert complex amplitudes to real observables
+                for (i, amp) in qstate.amplitudes.iter().take(self.n_dimensions).enumerate() {
+                    self.quantum_amplitudes[i] = (amp.real * amp.real + amp.imag * amp.imag).sqrt();
+                    self.quantum_phases[i] = amp.imag.atan2(amp.real);
+                }
+            }
+        } else {
             // Fallback to original phase field analog
             let n = self.n_dimensions.min(thermo_state.phases.len());
             for i in 0..n {
                 self.quantum_phases[i] = thermo_state.phases[i];
                 self.quantum_amplitudes[i] *= (-0.01 * thermo_state.energy).exp();
             }
-        // }
+        }
 
         // Normalize amplitudes
         let norm = self.quantum_amplitudes.mapv(|a| a * a).sum().sqrt();
