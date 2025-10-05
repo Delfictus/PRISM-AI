@@ -199,11 +199,11 @@ impl UnifiedPlatform {
         ) as Box<dyn InformationFlowPort>;
         println!("[Platform] ✓ Information flow adapter (GPU transfer entropy)");
 
-        // Thermodynamic: CPU-based (GPU kernels not yet implemented)
+        // Thermodynamic: GPU-accelerated evolution
         let thermodynamic = Box::new(
-            ThermodynamicAdapter::new(n_dimensions)
+            ThermodynamicAdapter::new_gpu(cuda_context.clone(), n_dimensions)?
         ) as Box<dyn ThermodynamicPort>;
-        println!("[Platform] ⚠ Thermodynamic adapter (CPU - GPU TODO)");
+        println!("[Platform] ✓ Thermodynamic adapter (GPU Langevin dynamics)");
 
         // Quantum: GPU MLIR kernels
         let quantum = Box::new(
@@ -211,11 +211,11 @@ impl UnifiedPlatform {
         ) as Box<dyn QuantumPort>;
         println!("[Platform] ✓ Quantum adapter (GPU MLIR)");
 
-        // Active Inference: CPU-based (GPU variational inference not yet implemented)
+        // Active Inference: GPU-accelerated variational inference
         let active_inference = Box::new(
-            ActiveInferenceAdapter::new(n_dimensions)
+            ActiveInferenceAdapter::new_gpu(cuda_context.clone(), n_dimensions)?
         ) as Box<dyn ActiveInferencePort>;
-        println!("[Platform] ⚠ Active inference adapter (CPU - GPU TODO)");
+        println!("[Platform] ✓ Active inference adapter (GPU variational inference)");
 
         // Step 3: Initialize cross-domain bridge
         let bridge = CrossDomainBridge::new(n_dimensions, 5.0);
@@ -223,10 +223,11 @@ impl UnifiedPlatform {
         println!("[Platform] GPU Integration Status:");
         println!("[Platform]   Neuromorphic: GPU ✓");
         println!("[Platform]   Info Flow: GPU ✓");
-        println!("[Platform]   Thermodynamic: CPU (TODO)");
+        println!("[Platform]   Thermodynamic: GPU ✓");
         println!("[Platform]   Quantum: GPU ✓");
-        println!("[Platform]   Active Inference: CPU (TODO)");
-        println!("[Platform] Constitutional compliance: 3/5 modules on GPU");
+        println!("[Platform]   Active Inference: GPU ✓");
+        println!("[Platform] Constitutional compliance: 5/5 modules on GPU (100%)");
+        println!("[Platform] 🎯 FULL GPU ACCELERATION ACHIEVED!");
 
         Ok(Self {
             cuda_context,

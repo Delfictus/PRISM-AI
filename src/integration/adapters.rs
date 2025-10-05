@@ -153,13 +153,19 @@ impl InformationFlowPort for InformationFlowAdapter {
     }
 }
 
-/// CPU-based thermodynamic adapter (GPU version requires thermal dynamics kernels)
+/// Thermodynamic adapter (GPU-accelerated when CUDA enabled)
 pub struct ThermodynamicAdapter {
+    #[cfg(feature = "cuda")]
+    network: crate::statistical_mechanics::ThermodynamicGpu,
+
+    #[cfg(not(feature = "cuda"))]
     network: ThermodynamicNetwork,
+
+    config: crate::statistical_mechanics::NetworkConfig,
 }
 
 impl ThermodynamicAdapter {
-    pub fn new(n_oscillators: usize) -> Self {
+    pub fn new_gpu(context: Arc<CudaContext>, n_oscillators: usize) -> Result<Self> {
         use crate::statistical_mechanics::NetworkConfig;
 
         let config = NetworkConfig {
@@ -172,32 +178,68 @@ impl ThermodynamicAdapter {
             seed: 42,
         };
 
-        Self {
-            network: ThermodynamicNetwork::new(config),
+        #[cfg(feature = "cuda")]
+        {
+            // GPU implementation (Article VI: evolution on GPU)
+            let network = crate::statistical_mechanics::ThermodynamicGpu::new(context, config)?;
+            Ok(Self { network, config })
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            // Fallback to CPU if CUDA not enabled
+            let _ = context;  // Suppress unused warning
+            let network = ThermodynamicNetwork::new(config);
+            Ok(Self { network, config })
         }
     }
 }
 
 impl ThermodynamicPort for ThermodynamicAdapter {
-    fn evolve(&mut self, _coupling: &Array2<f64>, dt: f64) -> Result<ThermodynamicState> {
-        // Compute steps from dt
-        let n_steps = ((dt / 0.001).max(1.0)) as usize;
+    fn evolve(&mut self, coupling: &Array2<f64>, dt: f64) -> Result<ThermodynamicState> {
+        #[cfg(feature = "cuda")]
+        {
+            // GPU path: update coupling and evolve
+            self.network.update_coupling(coupling)?;
 
-        // Evolve network
-        let result = self.network.evolve(n_steps);
+            // Compute steps from dt
+            let n_steps = ((dt / self.config.dt).max(1.0)) as usize;
 
-        Ok(result.state.clone())
+            // Evolve on GPU
+            let mut state = self.network.get_state()?;
+            for _ in 0..n_steps {
+                state = self.network.evolve_step()?;
+            }
+
+            Ok(state)
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            // CPU path: use existing evolution
+            let _ = coupling;  // TODO: Use coupling matrix
+            let n_steps = ((dt / self.config.dt).max(1.0)) as usize;
+            let result = self.network.evolve(n_steps);
+            Ok(result.state.clone())
+        }
     }
 
     fn entropy_production(&self) -> f64 {
-        // Compute from entropy history
-        let history = self.network.entropy_history();
-        if history.len() > 1 {
-            let n = history.len();
-            let delta_s = history[n-1] - history[n-2];
-            delta_s / 0.001 // dt used in network
-        } else {
-            0.0
+        #[cfg(feature = "cuda")]
+        {
+            self.network.entropy_production()
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            let history = self.network.entropy_history();
+            if history.len() > 1 {
+                let n = history.len();
+                let delta_s = history[n-1] - history[n-2];
+                delta_s / self.config.dt
+            } else {
+                0.0
+            }
         }
     }
 }
@@ -252,15 +294,21 @@ impl QuantumPort for QuantumAdapter {
     }
 }
 
-/// CPU-based active inference adapter (GPU version requires variational inference kernels)
+/// Active inference adapter (GPU-accelerated when CUDA enabled)
 pub struct ActiveInferenceAdapter {
     hierarchical_model: crate::active_inference::HierarchicalModel,
+
+    #[cfg(feature = "cuda")]
+    inference_engine: crate::active_inference::ActiveInferenceGpu,
+
+    #[cfg(not(feature = "cuda"))]
     inference_engine: crate::active_inference::VariationalInference,
+
     controller: crate::active_inference::ActiveInferenceController,
 }
 
 impl ActiveInferenceAdapter {
-    pub fn new(n_dimensions: usize) -> Self {
+    pub fn new_gpu(context: Arc<CudaContext>, _n_dimensions: usize) -> Result<Self> {
         use crate::active_inference::{
             HierarchicalModel, VariationalInference,
             PolicySelector, ActiveInferenceController, SensingStrategy,
@@ -271,20 +319,36 @@ impl ActiveInferenceAdapter {
         let n_windows = 900;
         let obs_model = ObservationModel::new(100, n_windows, 8.0, 0.01);
         let trans_model = TransitionModel::default_timescales();
-        let inference = VariationalInference::new(
+        let cpu_inference = VariationalInference::new(
             obs_model.clone(),
             trans_model.clone(),
             &hierarchical_model
         );
 
         let preferred_obs = Array1::zeros(100);
-        let selector = PolicySelector::new(3, 5, preferred_obs, inference.clone(), trans_model);
+        let selector = PolicySelector::new(3, 5, preferred_obs, cpu_inference.clone(), trans_model);
         let controller = ActiveInferenceController::new(selector, SensingStrategy::Adaptive);
 
-        Self {
-            hierarchical_model,
-            inference_engine: inference,
-            controller,
+        #[cfg(feature = "cuda")]
+        {
+            // GPU implementation (Article VI: variational inference on GPU)
+            let inference_engine = crate::active_inference::ActiveInferenceGpu::new(context, cpu_inference)?;
+            Ok(Self {
+                hierarchical_model,
+                inference_engine,
+                controller,
+            })
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            // Fallback to CPU if CUDA not enabled
+            let _ = context;
+            Ok(Self {
+                hierarchical_model,
+                inference_engine: cpu_inference,
+                controller,
+            })
         }
     }
 }
@@ -303,13 +367,19 @@ impl ActiveInferencePort for ActiveInferenceAdapter {
             observations.clone()
         };
 
-        // Run variational inference (returns FreeEnergyComponents, not Result)
-        let _components = self.inference_engine.infer(&mut self.hierarchical_model, &obs_resized);
+        #[cfg(feature = "cuda")]
+        {
+            // GPU path: accelerated variational inference
+            self.inference_engine.infer_gpu(&mut self.hierarchical_model, &obs_resized)
+        }
 
-        // Compute free energy
-        let free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
-
-        Ok(free_energy)
+        #[cfg(not(feature = "cuda"))]
+        {
+            // CPU path: standard variational inference
+            let _components = self.inference_engine.infer(&mut self.hierarchical_model, &obs_resized);
+            let free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
+            Ok(free_energy)
+        }
     }
 
     fn select_action(&mut self, _targets: &Array1<f64>) -> Result<Array1<f64>> {

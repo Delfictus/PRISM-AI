@@ -15,6 +15,13 @@ pub mod controller;
 #[cfg(feature = "cuda")]
 pub mod gpu_inference;
 
+// GPU-accelerated variational inference
+#[cfg(feature = "cuda")]
+pub mod gpu;
+
+#[cfg(feature = "cuda")]
+pub use gpu::ActiveInferenceGpu;
+
 pub use generative_model::{GenerativeModel, PerformanceMetrics};
 pub use hierarchical_model::{HierarchicalModel, StateSpaceLevel, GaussianBelief, GeneralizedCoordinates};
 pub use observation_model::{ObservationModel, MeasurementPattern};
