@@ -12,10 +12,12 @@
 
 use prism_ai::integration::{UnifiedPlatform, PlatformInput};
 use prism_ai::quantum_mlir::{QuantumCompiler, QuantumOp};
+use prct_core::dimacs_parser;
 use ndarray::Array1;
 use anyhow::Result;
 use colored::*;
 use std::time::Instant;
+use std::path::Path;
 
 fn main() -> Result<()> {
     print_banner();
@@ -210,59 +212,84 @@ fn test_integrated_platform() -> Result<()> {
 }
 
 fn visual_graph_coloring_demo() -> Result<()> {
-    println!("  {} Creating complex graph for coloring...", "▶".bright_green().bold());
+    println!("  {} Loading REAL DIMACS benchmark graph...", "▶".bright_green().bold());
 
-    // Create a compelling graph - Petersen graph variant (highly symmetric)
-    let edges = vec![
-        // Outer pentagon
-        (0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 0, 1.0),
-        // Inner pentagram
-        (5, 7, 1.0), (7, 9, 1.0), (9, 6, 1.0), (6, 8, 1.0), (8, 5, 1.0),
-        // Spokes
-        (0, 5, 1.0), (1, 6, 1.0), (2, 7, 1.0), (3, 8, 1.0), (4, 9, 1.0),
-        // Additional connections for complexity
-        (0, 2, 0.5), (1, 3, 0.5), (2, 4, 0.5), (3, 0, 0.5), (4, 1, 0.5),
-    ];
+    // Try to load real DIMACS graph, fallback to generated if not available
+    let graph = if Path::new("benchmarks/myciel3.col").exists() {
+        println!("  {} Found myciel3.col - Mycielski graph", "✓".bright_cyan());
+        dimacs_parser::parse_dimacs_file("benchmarks/myciel3.col")?
+    } else if Path::new("benchmarks/queen5_5.col").exists() {
+        println!("  {} Found queen5_5.col - Queen graph", "✓".bright_cyan());
+        dimacs_parser::parse_dimacs_file("benchmarks/queen5_5.col")?
+    } else if Path::new("benchmarks/dsjc125.1.col").exists() {
+        println!("  {} Found DSJC125.1 - Johnson benchmark", "✓".bright_cyan());
+        dimacs_parser::parse_dimacs_file("benchmarks/dsjc125.1.col")?
+    } else {
+        println!("  {} No DIMACS files found, generating synthetic graph", "⚠".yellow());
+        // Fallback: Create a compelling graph - Petersen graph variant
+        let edges = vec![
+            // Outer pentagon
+            (0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 0, 1.0),
+            // Inner pentagram
+            (5, 7, 1.0), (7, 9, 1.0), (9, 6, 1.0), (6, 8, 1.0), (8, 5, 1.0),
+            // Spokes
+            (0, 5, 1.0), (1, 6, 1.0), (2, 7, 1.0), (3, 8, 1.0), (4, 9, 1.0),
+        ];
 
-    // Build adjacency matrix
-    let mut adjacency = vec![false; 10 * 10];
-    for (i, j, _) in &edges {
-        adjacency[i * 10 + j] = true;
-        adjacency[j * 10 + i] = true;
-    }
+        let mut adjacency = vec![false; 10 * 10];
+        for (i, j, _) in &edges {
+            adjacency[i * 10 + j] = true;
+            adjacency[j * 10 + i] = true;
+        }
 
-    let graph = shared_types::Graph {
-        num_vertices: 10,
-        num_edges: edges.len(),
-        edges: edges.clone(),
-        adjacency,
-        coordinates: None,
+        shared_types::Graph {
+            num_vertices: 10,
+            num_edges: edges.len(),
+            edges: edges.clone(),
+            adjacency,
+            coordinates: None,
+        }
     };
 
-    println!("  {} Graph: {} vertices, {} edges", "✓".bright_green(), graph.num_vertices, graph.edges.len());
-    println!("  {} Structure: Enhanced Petersen graph", "✓".bright_green());
+    println!("  {} Graph: {} vertices, {} edges", "✓".bright_green().bold(), graph.num_vertices, graph.num_edges);
+    println!("  {} Density: {:.1}%", "✓".bright_green(),
+        (graph.num_edges as f64 / (graph.num_vertices * (graph.num_vertices - 1) / 2) as f64) * 100.0);
     println!();
 
     // Visual representation
-    println!("  {}", "Graph Topology:".bright_yellow().bold());
-    print_graph_visual(&graph);
+    println!("  {}", "Graph Statistics:".bright_yellow().bold());
+    print_graph_stats(&graph);
     println!();
 
     // Run through the platform
     println!("  {} Processing through quantum-neuromorphic pipeline...", "▶".bright_magenta().bold());
 
-    let mut platform = UnifiedPlatform::new(10)?;
+    // Use min of graph size or reasonable platform size
+    let platform_dims = graph.num_vertices.min(20);
+    let mut platform = UnifiedPlatform::new(platform_dims)?;
 
-    // Convert graph to input pattern
-    let mut input_pattern = vec![0.0; 10];
-    for (i, j, weight) in &edges {
-        input_pattern[*i] += weight * 0.1;
-        input_pattern[*j] += weight * 0.1;
+    // Convert graph to input pattern (vertex activity based on connectivity)
+    let mut input_pattern = vec![0.0; platform_dims];
+    for (i, j, weight) in &graph.edges {
+        if *i < platform_dims {
+            input_pattern[*i] += weight * 0.1;
+        }
+        if *j < platform_dims {
+            input_pattern[*j] += weight * 0.1;
+        }
+    }
+
+    // Normalize input
+    let max_val = input_pattern.iter().cloned().fold(0.0, f64::max);
+    if max_val > 0.0 {
+        for val in &mut input_pattern {
+            *val /= max_val;
+        }
     }
 
     let input = PlatformInput::new(
         Array1::from_vec(input_pattern.clone()),
-        Array1::from_vec(vec![1.0; 10]),
+        Array1::from_vec(vec![1.0; platform_dims]),
         0.001,
     );
 
@@ -303,13 +330,36 @@ fn visual_graph_coloring_demo() -> Result<()> {
     Ok(())
 }
 
-fn print_graph_visual(graph: &shared_types::Graph) {
-    println!("  {}", "     0───1───2        Outer ring: 0-1-2-3-4".bright_white());
-    println!("  {}", "    ╱│   │   │╲       Inner star: 5-7-9-6-8".bright_white());
-    println!("  {}", "   4 │   │   │ 3      Spokes: connecting".bright_white());
-    println!("  {}",  format!("    ╲5───6───7╱       Total edges: {}", graph.edges.len()).bright_white());
-    println!("  {}", "      ╲ │ │ ╱".bright_white());
-    println!("  {}", "       8─9".bright_white());
+fn print_graph_stats(graph: &shared_types::Graph) {
+    // Calculate degree statistics
+    let mut degrees = vec![0; graph.num_vertices];
+    for (i, j, _) in &graph.edges {
+        degrees[*i] += 1;
+        degrees[*j] += 1;
+    }
+
+    let max_degree = degrees.iter().max().cloned().unwrap_or(0);
+    let avg_degree = degrees.iter().sum::<usize>() as f64 / graph.num_vertices as f64;
+    let min_degree = degrees.iter().min().cloned().unwrap_or(0);
+
+    println!("  ├─ Vertices: {}", graph.num_vertices.to_string().bright_cyan());
+    println!("  ├─ Edges: {}", graph.num_edges.to_string().bright_cyan());
+    println!("  ├─ Max Degree: {}", max_degree.to_string().bright_yellow());
+    println!("  ├─ Avg Degree: {:.1}", avg_degree.to_string().bright_yellow());
+    println!("  └─ Min Degree: {}", min_degree.to_string().bright_yellow());
+
+    // Show edge distribution histogram
+    print!("  Degree distribution: ");
+    for d in 0..=max_degree.min(20) {
+        let count = degrees.iter().filter(|&&deg| deg == d).count();
+        if count > 0 {
+            let height = ((count as f64 / graph.num_vertices as f64) * 10.0) as usize;
+            print!("{}", "█".repeat(height.max(1)).bright_blue());
+        } else {
+            print!("·");
+        }
+    }
+    println!();
 }
 
 fn visualize_quantum_state(state: &Array1<f64>) {

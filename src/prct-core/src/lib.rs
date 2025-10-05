@@ -15,6 +15,7 @@ pub mod coupling;
 pub mod coloring;
 pub mod tsp;
 pub mod errors;
+pub mod dimacs_parser;
 
 // Re-export main types
 pub use ports::*;
