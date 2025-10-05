@@ -11,9 +11,7 @@
 //! 5. Lyapunov Stability - ensures convergence and stability
 
 use anyhow::Result;
-use nalgebra::DVector;
 use num_complex::Complex64;
-use std::collections::HashMap;
 use std::f64::consts::PI;
 
 /// Physics-based coupling parameters with theoretical foundations

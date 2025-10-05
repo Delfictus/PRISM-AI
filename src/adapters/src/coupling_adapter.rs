@@ -6,10 +6,10 @@
 use prct_core::ports::PhysicsCouplingPort;
 use prct_core::errors::{PRCTError, Result};
 use shared_types::*;
-use platform_foundation::{PhysicsCoupling, KuramotoSync};
+use platform_foundation::PhysicsCoupling;
 use num_complex::Complex64;
 use nalgebra::DMatrix;
-use cudarc::driver::{CudaContext, CudaSlice, LaunchConfig, CudaFunction, CudaModule, PushKernelArg};
+use cudarc::driver::{CudaContext, LaunchConfig, CudaModule, PushKernelArg};
 use std::sync::Arc;
 
 /// Adapter connecting PRCT domain to GPU-accelerated physics coupling service

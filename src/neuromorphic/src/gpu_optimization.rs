@@ -4,9 +4,9 @@
 //! Provides detailed performance hotspot analysis and optimization recommendations
 
 use cudarc::driver::*;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use dashmap::DashMap;
 
 /// Performance analysis metrics for CUDA operations

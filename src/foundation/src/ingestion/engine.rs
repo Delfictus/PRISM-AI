@@ -2,7 +2,7 @@
 
 use super::buffer::CircularBuffer;
 use super::error::{CircuitBreaker, IngestionError, RetryPolicy};
-use super::types::{DataPoint, DataSource, SourceInfo};
+use super::types::{DataPoint, DataSource};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;

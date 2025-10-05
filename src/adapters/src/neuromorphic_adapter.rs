@@ -6,9 +6,8 @@
 use prct_core::ports::{NeuromorphicPort, NeuromorphicEncodingParams};
 use prct_core::errors::{PRCTError, Result};
 use shared_types::*;
-use neuromorphic_engine::{SpikeEncoder, ReservoirComputer, PatternDetector, InputData};
-use neuromorphic_engine::pattern_detector::PatternDetectorConfig;
-use cudarc::driver::{CudaContext, CudaSlice, LaunchConfig, CudaFunction, CudaModule, PushKernelArg};
+use neuromorphic_engine::{SpikeEncoder, ReservoirComputer, InputData};
+use cudarc::driver::{CudaContext, LaunchConfig, CudaModule, PushKernelArg};
 use std::sync::Arc;
 
 /// Adapter connecting PRCT domain to GPU-accelerated neuromorphic engine

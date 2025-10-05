@@ -9,7 +9,7 @@ use shared_types::*;
 use quantum_engine::{Hamiltonian, ForceFieldParams, PhaseResonanceField};
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
-use cudarc::driver::{CudaContext, CudaSlice, LaunchConfig, CudaFunction, CudaModule, PushKernelArg};
+use cudarc::driver::{CudaContext, CudaModule, PushKernelArg};
 use std::sync::Arc;
 use parking_lot::Mutex;
 

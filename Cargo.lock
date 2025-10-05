@@ -3,49 +3,6 @@
 version = 4
 
 [[package]]
-name = "active-inference-platform"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "approx 0.5.1",
- "bincode",
- "candle-core 0.9.1",
- "candle-nn 0.9.1",
- "chrono",
- "criterion",
- "cudarc 0.17.3",
- "dashmap 5.5.3",
- "env_logger",
- "fastrand",
- "kdtree",
- "log",
- "mathematics",
- "nalgebra 0.32.6",
- "ndarray",
- "neuromorphic-engine",
- "num-complex",
- "ordered-float",
- "parking_lot",
- "platform-foundation",
- "prct-adapters",
- "prct-core",
- "quantum-engine",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rand_distr 0.4.3",
- "rayon",
- "rustfft",
- "serde",
- "serde_json",
- "sha2",
- "shared-types",
- "statrs",
- "tempfile",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2307,6 +2264,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc0d895b311e3af9902528fbb8f928688abbd95872819320517cc24ca6b2bd08"
 dependencies = [
  "num-integer",
+]
+
+[[package]]
+name = "prism-ai"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "approx 0.5.1",
+ "bincode",
+ "candle-core 0.9.1",
+ "candle-nn 0.9.1",
+ "chrono",
+ "criterion",
+ "cudarc 0.17.3",
+ "dashmap 5.5.3",
+ "env_logger",
+ "fastrand",
+ "kdtree",
+ "log",
+ "mathematics",
+ "nalgebra 0.32.6",
+ "ndarray",
+ "neuromorphic-engine",
+ "num-complex",
+ "ordered-float",
+ "parking_lot",
+ "platform-foundation",
+ "prct-adapters",
+ "prct-core",
+ "quantum-engine",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_distr 0.4.3",
+ "rayon",
+ "rustfft",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shared-types",
+ "statrs",
+ "tempfile",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

@@ -317,6 +317,9 @@ impl GpuInferenceEngine {
 mod tests {
     use super::*;
     use super::super::hierarchical_model::constants;
+    use super::super::observation_model::ObservationModel;
+    use super::super::transition_model::TransitionModel;
+    use super::super::variational_inference::VariationalInference;
 
     fn create_test_setup() -> anyhow::Result<(GpuInferenceEngine, ObservationModel)> {
         let model = HierarchicalModel::new();

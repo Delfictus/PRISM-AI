@@ -2,7 +2,7 @@
 //! COMPLETE IMPLEMENTATION - ALL 456+ LINES PRESERVED
 //! LIQUID STATE MACHINE WITH FULL MATHEMATICAL SOPHISTICATION
 
-use crate::types::{SpikePattern, Spike, PatternMetadata};
+use crate::types::SpikePattern;
 use crate::stdp_profiles::{STDPProfile, STDPConfig, LearningStats};
 use nalgebra::{DMatrix, DVector};
 use anyhow::Result;

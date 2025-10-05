@@ -388,6 +388,7 @@ impl ActiveInferenceController {
 mod tests {
     use super::*;
     use super::super::hierarchical_model::constants;
+    use super::super::observation_model::ObservationModel;
 
     fn create_test_controller() -> (ActiveInferenceController, HierarchicalModel) {
         let model = HierarchicalModel::new();

@@ -79,6 +79,11 @@ impl ControllerValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::hierarchical_model::constants;
+    use super::super::observation_model::ObservationModel;
+    use super::super::transition_model::TransitionModel;
+    use super::super::variational_inference::VariationalInference;
+    use super::super::policy_selection::{PolicySelector, SensingStrategy};
 
     fn create_test_controller() -> (ActiveInferenceController, HierarchicalModel) {
         let model = HierarchicalModel::new();

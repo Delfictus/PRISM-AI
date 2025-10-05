@@ -2,7 +2,7 @@
 //! COMPLETE IMPLEMENTATION - ALL 322+ LINES PRESERVED
 //! ADVANCED PATTERN RECOGNITION WITH CIRCUIT BREAKER PROTECTION
 
-use crate::types::{SpikePattern, Pattern, PatternMetadata};
+use crate::types::{SpikePattern, PatternMetadata};
 use anyhow::Result;
 use std::collections::{VecDeque, HashMap};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -344,7 +344,7 @@ impl PatternDetector {
         }
 
         let last_failure = self.last_failure_time.load(Ordering::Relaxed);
-        let now = chrono::Utc::now().timestamp_nanos() as u64;
+        let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64;
 
         if now.saturating_sub(last_failure) > CIRCUIT_RECOVERY_TIME_NS {
             return false;
@@ -356,7 +356,7 @@ impl PatternDetector {
     /// Record a failure and update circuit breaker state
     fn record_failure(&self, reason: &str) {
         let failure_count = self.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-        let now = chrono::Utc::now().timestamp_nanos() as u64;
+        let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64;
         self.last_failure_time.store(now, Ordering::Relaxed);
 
         if failure_count >= MAX_CONSECUTIVE_FAILURES {

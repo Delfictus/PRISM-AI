@@ -6,11 +6,11 @@
 
 use crate::types::*;
 use neuromorphic_engine::{
-    SpikeEncoder, EncodingParameters, ReservoirComputer, PatternDetector,
-    InputData, EncodingMethod
+    SpikeEncoder, ReservoirComputer, PatternDetector,
+    InputData
 };
 use neuromorphic_engine::pattern_detector::PatternDetectorConfig;
-use quantum_engine::{Hamiltonian, ForceFieldParams, calculate_ground_state};
+use quantum_engine::{Hamiltonian, ForceFieldParams};
 use anyhow::Result;
 use ndarray::{Array1, Array2};
 use num_complex::Complex64;
@@ -208,7 +208,7 @@ impl NeuromorphicQuantumPlatform {
 
     /// Process input through the complete neuromorphic-quantum pipeline
     /// This is the main entry point for platform processing
-    pub async fn process(&self, mut input: PlatformInput) -> Result<PlatformOutput> {
+    pub async fn process(&self, input: PlatformInput) -> Result<PlatformOutput> {
         let start_time = chrono::Utc::now();
         let mut neuromorphic_results = None;
         let mut quantum_results = None;

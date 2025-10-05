@@ -4,7 +4,6 @@
 //! the core 89% performance improvement in neuromorphic processing
 
 use cudarc::driver::*;
-use cudarc::nvrtc::*;
 use anyhow::Result;
 use std::sync::Arc;
 use std::fmt;
