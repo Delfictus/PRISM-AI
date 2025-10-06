@@ -42,7 +42,9 @@ impl NeuromorphicAdapter {
                     connection_prob: 0.1,
                     leak_rate: 0.3,
                     input_scaling: 1.0,
-                    output_size: 1000,
+                    noise_level: 0.01,
+                    enable_plasticity: false,
+                    stdp_profile: neuromorphic_engine::stdp_profiles::STDPProfile::Balanced,
                 },
                 neuromorphic_engine::gpu_reservoir::GpuConfig {
                     device_id: 0,
@@ -68,7 +70,7 @@ impl NeuromorphicPort for NeuromorphicAdapter {
                 spikes_vec.push(Spike {
                     neuron_id: i,
                     time_ms: 0.0,
-                    amplitude: val,
+                    amplitude: Some(val as f32),
                 });
             }
         }
@@ -76,7 +78,12 @@ impl NeuromorphicPort for NeuromorphicAdapter {
         let spike_pattern = SpikePattern {
             spikes: spikes_vec,
             duration_ms: 1.0,
-            metadata: None,
+            metadata: neuromorphic_engine::types::PatternMetadata {
+                strength: 1.0,
+                pattern_type: None,
+                source: None,
+                custom: std::collections::HashMap::new(),
+            },
         };
 
         // Process on GPU reservoir
@@ -208,8 +215,9 @@ impl ThermodynamicAdapter {
         #[cfg(feature = "cuda")]
         {
             // GPU implementation (Article VI: evolution on GPU)
+            let config_copy = config.clone();
             let network = crate::statistical_mechanics::ThermodynamicGpu::new(context, config)?;
-            Ok(Self { network, config })
+            Ok(Self { network, config: config_copy })
         }
 
         #[cfg(not(feature = "cuda"))]

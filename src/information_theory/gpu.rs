@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use ndarray::Array1;
 use anyhow::{Result, anyhow, Context};
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig, DeviceRepr, ValidAsZeroBits};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig, DeviceRepr, ValidAsZeroBits, PushKernelArg};
 
 /// GPU-accelerated transfer entropy calculator
 ///

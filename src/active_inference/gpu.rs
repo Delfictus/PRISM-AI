@@ -14,7 +14,7 @@
 use std::sync::Arc;
 use ndarray::{Array1, Array2};
 use anyhow::{Result, anyhow, Context};
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig, PushKernelArg};
 
 use super::{HierarchicalModel, VariationalInference, ObservationModel};
 
@@ -300,7 +300,7 @@ impl ActiveInferenceGpu {
                 &mut model.level1.belief.mean,
                 &self.cpu_inference.observation_model.jacobian,
                 observations,
-                &self.cpu_inference.observation_model.precision
+                &self.cpu_inference.observation_model.noise_precision
             )?;
         }
 
