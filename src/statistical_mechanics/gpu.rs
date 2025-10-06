@@ -296,7 +296,13 @@ impl ThermodynamicGpu {
         }
 
         let n = self.entropy_history.len();
-        let delta_s = self.entropy_history[n-1] - self.entropy_history[n-2];
+        let s_current = self.entropy_history[n-1];
+        let s_prev = self.entropy_history[n-2];
+        let delta_s = s_current - s_prev;
+
+        eprintln!("[Thermo GPU] Entropy check: S_prev={:.4}, S_current={:.4}, ΔS={:.4}, dS/dt={:.4}",
+            s_prev, s_current, delta_s, delta_s / self.config.dt);
+
         delta_s / self.config.dt
     }
 
