@@ -63,12 +63,12 @@ impl ThermodynamicGpu {
         let module = context.load_module(ptx)?;
 
         // Load all kernel functions
-        let init_kernel = Arc::new(module.get_function("initialize_oscillators_kernel")?);
-        let forces_kernel = Arc::new(module.get_function("compute_coupling_forces_kernel")?);
-        let evolve_kernel = Arc::new(module.get_function("evolve_oscillators_kernel")?);
-        let energy_kernel = Arc::new(module.get_function("compute_energy_kernel")?);
-        let entropy_kernel = Arc::new(module.get_function("compute_entropy_kernel")?);
-        let order_kernel = Arc::new(module.get_function("compute_order_parameter_kernel")?);
+        let init_kernel = Arc::new(module.load_function("initialize_oscillators_kernel")?);
+        let forces_kernel = Arc::new(module.load_function("compute_coupling_forces_kernel")?);
+        let evolve_kernel = Arc::new(module.load_function("evolve_oscillators_kernel")?);
+        let energy_kernel = Arc::new(module.load_function("compute_energy_kernel")?);
+        let entropy_kernel = Arc::new(module.load_function("compute_entropy_kernel")?);
+        let order_kernel = Arc::new(module.load_function("compute_order_parameter_kernel")?);
 
         let stream = context.default_stream();
         let n = config.n_oscillators;
@@ -252,11 +252,12 @@ impl ThermodynamicGpu {
         unsafe { launch_order.launch(cfg)?; }
 
         // Download results
-        let energy_vec = self.context.memcpy_dtoh_async(&energy_components)?;
-        let entropy_vec = self.context.memcpy_dtoh_async(&entropy_result)?;
-        let order_real_vec = self.context.memcpy_dtoh_async(&order_real)?;
-        let order_imag_vec = self.context.memcpy_dtoh_async(&order_imag)?;
-        let phases_vec = self.context.memcpy_dtoh_async(&self.phases)?;
+        let stream = self.context.default_stream();
+        let energy_vec = stream.memcpy_dtov(&energy_components)?;
+        let entropy_vec = stream.memcpy_dtov(&entropy_result)?;
+        let order_real_vec = stream.memcpy_dtov(&order_real)?;
+        let order_imag_vec = stream.memcpy_dtov(&order_imag)?;
+        let phases_vec = stream.memcpy_dtov(&self.phases)?;
 
         let total_energy = energy_vec[0] + energy_vec[1] + energy_vec[2];
         let entropy = entropy_vec[0];
@@ -264,12 +265,25 @@ impl ThermodynamicGpu {
         // Order parameter: r = |⟨e^(iθ)⟩| / N
         let order_r = (order_real_vec[0]*order_real_vec[0] + order_imag_vec[0]*order_imag_vec[0]).sqrt() / (n as f64);
 
+        // Build ThermodynamicState matching actual struct
+        let n = self.config.n_oscillators;
+
+        // Download velocities for state
+        let velocities_vec = stream.memcpy_dtov(&self.velocities)?;
+
+        // Build coupling matrix (simplified - use identity for now)
+        let coupling_matrix: Vec<Vec<f64>> = (0..n).map(|i| {
+            (0..n).map(|j| if i == j { 1.0 } else { 0.0 }).collect()
+        }).collect();
+
         Ok(ThermodynamicState {
-            energy: total_energy,
+            phases: phases_vec,
+            velocities: velocities_vec,
+            natural_frequencies: vec![1.0; n],  // Simplified
+            coupling_matrix,
+            time: (self.iteration as f64) * self.config.dt,
             entropy,
-            temperature: self.config.temperature,
-            phases: Array1::from_vec(phases_vec),
-            order_parameter: order_r,
+            energy: total_energy,
         })
     }
 

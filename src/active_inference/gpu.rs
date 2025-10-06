@@ -65,16 +65,16 @@ impl ActiveInferenceGpu {
         let module = context.load_module(ptx)?;
 
         // Load all kernel functions
-        let gemv_kernel = Arc::new(module.get_function("gemv_kernel")?);
-        let prediction_error_kernel = Arc::new(module.get_function("prediction_error_kernel")?);
-        let belief_update_kernel = Arc::new(module.get_function("belief_update_kernel")?);
-        let precision_weight_kernel = Arc::new(module.get_function("precision_weight_kernel")?);
-        let kl_divergence_kernel = Arc::new(module.get_function("kl_divergence_kernel")?);
-        let accuracy_kernel = Arc::new(module.get_function("accuracy_kernel")?);
-        let sum_reduction_kernel = Arc::new(module.get_function("sum_reduction_kernel")?);
-        let axpby_kernel = Arc::new(module.get_function("axpby_kernel")?);
-        let velocity_update_kernel = Arc::new(module.get_function("velocity_update_kernel")?);
-        let hierarchical_project_kernel = Arc::new(module.get_function("hierarchical_project_kernel")?);
+        let gemv_kernel = Arc::new(module.load_function("gemv_kernel")?);
+        let prediction_error_kernel = Arc::new(module.load_function("prediction_error_kernel")?);
+        let belief_update_kernel = Arc::new(module.load_function("belief_update_kernel")?);
+        let precision_weight_kernel = Arc::new(module.load_function("precision_weight_kernel")?);
+        let kl_divergence_kernel = Arc::new(module.load_function("kl_divergence_kernel")?);
+        let accuracy_kernel = Arc::new(module.load_function("accuracy_kernel")?);
+        let sum_reduction_kernel = Arc::new(module.load_function("sum_reduction_kernel")?);
+        let axpby_kernel = Arc::new(module.load_function("axpby_kernel")?);
+        let velocity_update_kernel = Arc::new(module.load_function("velocity_update_kernel")?);
+        let hierarchical_project_kernel = Arc::new(module.load_function("hierarchical_project_kernel")?);
 
         Ok(Self {
             context,
@@ -189,8 +189,8 @@ impl ActiveInferenceGpu {
         unsafe { launch_sum_acc.launch(obs_cfg)?; }
 
         // Download results
-        let complexity_vec = stream.memcpy_dtoh(&complexity_result)?;
-        let accuracy_vec = stream.memcpy_dtoh(&accuracy_result)?;
+        let complexity_vec = stream.memcpy_dtov(&complexity_result)?;
+        let accuracy_vec = stream.memcpy_dtov(&accuracy_result)?;
 
         let complexity = complexity_vec[0];
         let accuracy = accuracy_vec[0];
@@ -276,7 +276,7 @@ impl ActiveInferenceGpu {
         unsafe { launch_update.launch(state_cfg)?; }
 
         // Download updated mean
-        let mean_vec = stream.memcpy_dtoh(&mean_gpu)?;
+        let mean_vec = stream.memcpy_dtov(&mean_gpu)?;
         for (i, val) in mean_vec.iter().enumerate() {
             mean[i] = *val;
         }

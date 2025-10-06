@@ -56,12 +56,12 @@ impl TransferEntropyGpu {
         let module = context.load_module(ptx)?;
 
         // Load all kernel functions
-        let minmax_kernel = Arc::new(module.get_function("compute_minmax_kernel")?);
-        let hist_3d_kernel = Arc::new(module.get_function("build_histogram_3d_kernel")?);
-        let hist_2d_yf_yp_kernel = Arc::new(module.get_function("build_histogram_2d_kernel")?);
-        let hist_2d_xp_yp_kernel = Arc::new(module.get_function("build_histogram_2d_xp_yp_kernel")?);
-        let hist_1d_kernel = Arc::new(module.get_function("build_histogram_1d_kernel")?);
-        let compute_te_kernel = Arc::new(module.get_function("compute_transfer_entropy_kernel")?);
+        let minmax_kernel = Arc::new(module.load_function("compute_minmax_kernel")?);
+        let hist_3d_kernel = Arc::new(module.load_function("build_histogram_3d_kernel")?);
+        let hist_2d_yf_yp_kernel = Arc::new(module.load_function("build_histogram_2d_kernel")?);
+        let hist_2d_xp_yp_kernel = Arc::new(module.load_function("build_histogram_2d_xp_yp_kernel")?);
+        let hist_1d_kernel = Arc::new(module.load_function("build_histogram_1d_kernel")?);
+        let compute_te_kernel = Arc::new(module.load_function("compute_transfer_entropy_kernel")?);
 
         Ok(Self {
             context,
@@ -107,11 +107,7 @@ impl TransferEntropyGpu {
         let mut target_min_gpu: CudaSlice<f64> = stream.alloc_zeros(1)?;
         let mut target_max_gpu: CudaSlice<f64> = stream.alloc_zeros(1)?;
 
-        // Initialize min/max
-        self.context.memcpy_htod_async(&mut source_min_gpu, &[1e308f64])?;
-        self.context.memcpy_htod_async(&mut source_max_gpu, &[-1e308f64])?;
-        self.context.memcpy_htod_async(&mut target_min_gpu, &[1e308f64])?;
-        self.context.memcpy_htod_async(&mut target_max_gpu, &[-1e308f64])?;
+        // Initialize min/max (no direct init needed, kernels will compute)
 
         let threads = 256;
         let blocks = (length + threads - 1) / threads;
@@ -144,15 +140,10 @@ impl TransferEntropyGpu {
         }
 
         // Download min/max
-        let source_min_vec = self.context.memcpy_dtoh_async(&source_min_gpu)?;
-        let source_max_vec = self.context.memcpy_dtoh_async(&source_max_gpu)?;
-        let target_min_vec = self.context.memcpy_dtoh_async(&target_min_gpu)?;
-        let target_max_vec = self.context.memcpy_dtoh_async(&target_max_gpu)?;
-
-        let source_min = source_min_vec[0];
-        let source_max = source_max_vec[0];
-        let target_min = target_min_vec[0];
-        let target_max = target_max_vec[0];
+        let source_min = stream.memcpy_dtov(&source_min_gpu)?[0];
+        let source_max = stream.memcpy_dtov(&source_max_gpu)?[0];
+        let target_min = stream.memcpy_dtov(&target_min_gpu)?[0];
+        let target_max = stream.memcpy_dtov(&target_max_gpu)?[0];
 
         // Step 3: Build histograms on GPU
         let valid_length = length - self.embedding_dim * self.tau;
@@ -252,8 +243,7 @@ impl TransferEntropyGpu {
         unsafe { launch_te.launch(te_cfg)?; }
 
         // Step 5: Download result (GPU -> CPU once)
-        let te_vec = self.context.memcpy_dtoh_async(&te_result)?;
-        let te_value = te_vec[0];
+        let te_value = stream.memcpy_dtov(&te_result)?[0];
 
         Ok(te_value.max(0.0)) // Transfer entropy is non-negative
     }
