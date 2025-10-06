@@ -125,8 +125,9 @@ fn compile_cuda_files(kernel_dir: &Path, cuda_path: &str) {
             panic!("Failed to compile CUDA kernel to object: {:?}", cu_file);
         }
 
-        // Link the object file
-        println!("cargo:rustc-link-arg={}", obj_file.display());
+        // DO NOT link object files - we use PTX runtime loading instead!
+        // This prevents linker errors and allows runtime GPU kernel loading
+        // println!("cargo:rustc-link-arg={}", obj_file.display());
     }
 
     // Copy PTX files to target directory for runtime loading
