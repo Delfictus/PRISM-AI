@@ -79,7 +79,7 @@ impl ExpectedFreeEnergyComponents {
 }
 
 /// Policy selector for active inference
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PolicySelector {
     /// Planning horizon (number of future steps)
     pub horizon: usize,
@@ -91,6 +91,25 @@ pub struct PolicySelector {
     pub inference: VariationalInference,
     /// Transition model for prediction
     pub transition: TransitionModel,
+
+    /// GPU policy evaluator (if CUDA enabled)
+    #[cfg(feature = "cuda")]
+    pub gpu_evaluator: Option<std::sync::Arc<std::sync::Mutex<super::gpu_policy_eval::GpuPolicyEvaluator>>>,
+}
+
+// Manual Clone implementation because Mutex doesn't derive Clone
+impl Clone for PolicySelector {
+    fn clone(&self) -> Self {
+        Self {
+            horizon: self.horizon,
+            n_policies: self.n_policies,
+            preferred_observations: self.preferred_observations.clone(),
+            inference: self.inference.clone(),
+            transition: self.transition.clone(),
+            #[cfg(feature = "cuda")]
+            gpu_evaluator: self.gpu_evaluator.clone(),
+        }
+    }
 }
 
 impl PolicySelector {
@@ -116,7 +135,19 @@ impl PolicySelector {
             preferred_observations,
             inference,
             transition,
+            #[cfg(feature = "cuda")]
+            gpu_evaluator: None,  // Will be set by set_gpu_evaluator()
         }
+    }
+
+    /// Set GPU policy evaluator (CUDA feature only)
+    #[cfg(feature = "cuda")]
+    pub fn set_gpu_evaluator(
+        &mut self,
+        evaluator: std::sync::Arc<std::sync::Mutex<super::gpu_policy_eval::GpuPolicyEvaluator>>
+    ) {
+        self.gpu_evaluator = Some(evaluator);
+        println!("[POLICY] GPU policy evaluator enabled");
     }
 
     /// Select optimal policy: π* = argmin_π G(π)
@@ -126,7 +157,62 @@ impl PolicySelector {
         // Generate candidate policies
         let policies = self.generate_policies(model);
 
-        // Evaluate expected free energy for each policy
+        // Try GPU evaluation first (if available)
+        #[cfg(feature = "cuda")]
+        {
+            if let Some(ref gpu_eval) = self.gpu_evaluator {
+                println!("[POLICY] Attempting GPU policy evaluation...");
+
+                // Extract observation matrix from inference engine
+                let obs_matrix = &self.inference.observation_model.jacobian;
+
+                match gpu_eval.lock() {
+                    Ok(mut evaluator) => {
+                        match evaluator.evaluate_policies_gpu(
+                            model,
+                            &policies,
+                            obs_matrix,
+                            &self.preferred_observations,
+                        ) {
+                            Ok(efe_values) => {
+                                println!("[POLICY] GPU evaluation SUCCESS!");
+
+                                // Assign EFE values to policies
+                                let evaluated: Vec<_> = policies
+                                    .into_iter()
+                                    .zip(efe_values.iter())
+                                    .map(|(mut policy, &efe)| {
+                                        policy.expected_free_energy = efe;
+                                        policy
+                                    })
+                                    .collect();
+
+                                // Select minimum
+                                return evaluated
+                                    .into_iter()
+                                    .min_by(|a, b| {
+                                        a.expected_free_energy
+                                            .partial_cmp(&b.expected_free_energy)
+                                            .unwrap()
+                                    })
+                                    .unwrap();
+                            }
+                            Err(e) => {
+                                eprintln!("[POLICY] GPU evaluation failed: {}", e);
+                                eprintln!("[POLICY] Falling back to CPU evaluation");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[POLICY] Failed to lock GPU evaluator: {}", e);
+                        eprintln!("[POLICY] Falling back to CPU evaluation");
+                    }
+                }
+            }
+        }
+
+        // CPU evaluation (fallback or default)
+        println!("[POLICY] Using CPU policy evaluation");
         let evaluated: Vec<_> = policies
             .into_iter()
             .map(|mut policy| {

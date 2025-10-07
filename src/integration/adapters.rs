@@ -28,15 +28,12 @@ pub struct NeuromorphicAdapter {
 
 impl NeuromorphicAdapter {
     pub fn new_gpu(context: Arc<CudaContext>, input_size: usize, reservoir_size: usize) -> Result<Self> {
-        // Use simplified CPU-based neuromorphic for now
-        // GPU reservoir exists but has complex config requirements
-        // TODO: Properly wire GpuReservoirComputer with shared context
-        let _ = (context, reservoir_size); // Suppress warnings
+        println!("[NEURO-ADAPTER] Creating GPU reservoir with SHARED context (Article V)");
 
         Ok(Self {
-            reservoir: GpuReservoirComputer::new(
+            reservoir: GpuReservoirComputer::new_shared(
                 neuromorphic_engine::reservoir::ReservoirConfig {
-                    size: 1000,
+                    size: reservoir_size.max(1000),  // Use parameter or default to 1000
                     input_size,
                     spectral_radius: 0.9,
                     connection_prob: 0.1,
@@ -46,12 +43,7 @@ impl NeuromorphicAdapter {
                     enable_plasticity: false,
                     stdp_profile: neuromorphic_engine::stdp_profiles::STDPProfile::Balanced,
                 },
-                neuromorphic_engine::gpu_reservoir::GpuConfig {
-                    device_id: 0,
-                    enable_mixed_precision: false,
-                    batch_size: 1,
-                    memory_pool_size_mb: 512,
-                }
+                context,  // Pass shared context!
             )?,
             spike_history: Vec::new(),
             threshold: 0.5,
@@ -63,7 +55,11 @@ impl NeuromorphicPort for NeuromorphicAdapter {
     fn encode_spikes(&mut self, input: &Array1<f64>) -> Result<Array1<bool>> {
         use neuromorphic_engine::{SpikePattern, Spike};
 
+        let start_total = std::time::Instant::now();
+        println!("[NEURO-ADAPTER] encode_spikes() ENTRY");
+
         // Convert Array1<f64> to SpikePattern
+        let conv_start = std::time::Instant::now();
         let mut spikes_vec = Vec::new();
         for (i, &val) in input.iter().enumerate() {
             if val > self.threshold {
@@ -85,20 +81,30 @@ impl NeuromorphicPort for NeuromorphicAdapter {
                 custom: std::collections::HashMap::new(),
             },
         };
+        println!("[NEURO-ADAPTER] Spike pattern conversion took {:?}", conv_start.elapsed());
 
         // Process on GPU reservoir
+        let gpu_start = std::time::Instant::now();
         let reservoir_state = self.reservoir.process_gpu(&spike_pattern)?;
+        println!("[NEURO-ADAPTER] GPU reservoir.process_gpu() took {:?}", gpu_start.elapsed());
 
         // Extract spike encoding from reservoir state (Vec<f64> -> Array1<bool>)
+        let extract_start = std::time::Instant::now();
         let spikes = Array1::from_vec(
             reservoir_state.activations.iter().map(|&x| x > self.threshold).collect()
         );
+        println!("[NEURO-ADAPTER] Spike extraction took {:?}", extract_start.elapsed());
 
         // Store in history
+        let hist_start = std::time::Instant::now();
         self.spike_history.push(spikes.clone());
         if self.spike_history.len() > 100 {
             self.spike_history.remove(0);
         }
+        println!("[NEURO-ADAPTER] History update took {:?}", hist_start.elapsed());
+
+        let total_elapsed = start_total.elapsed();
+        println!("[NEURO-ADAPTER] TOTAL encode_spikes() time: {:?}", total_elapsed);
 
         Ok(spikes)
     }
@@ -361,7 +367,30 @@ impl ActiveInferenceAdapter {
         );
 
         let preferred_obs = Array1::zeros(100);
-        let selector = PolicySelector::new(3, 5, preferred_obs, cpu_inference.clone(), trans_model);
+        let mut selector = PolicySelector::new(3, 5, preferred_obs, cpu_inference.clone(), trans_model);
+
+        #[cfg(feature = "cuda")]
+        {
+            // Create GPU policy evaluator
+            println!("[ADAPTER] Creating GPU policy evaluator...");
+            match crate::active_inference::GpuPolicyEvaluator::new(
+                context.clone(),
+                5,   // n_policies
+                3,   // horizon
+                10,  // substeps for window evolution
+            ) {
+                Ok(gpu_policy_eval) => {
+                    let gpu_eval_arc = std::sync::Arc::new(std::sync::Mutex::new(gpu_policy_eval));
+                    selector.set_gpu_evaluator(gpu_eval_arc);
+                    println!("[ADAPTER] GPU policy evaluator created and wired successfully");
+                }
+                Err(e) => {
+                    eprintln!("[ADAPTER] Failed to create GPU policy evaluator: {}", e);
+                    eprintln!("[ADAPTER] Will use CPU policy evaluation");
+                }
+            }
+        }
+
         let controller = ActiveInferenceController::new(selector, SensingStrategy::Adaptive);
 
         #[cfg(feature = "cuda")]
@@ -390,7 +419,12 @@ impl ActiveInferenceAdapter {
 
 impl ActiveInferencePort for ActiveInferenceAdapter {
     fn infer(&mut self, observations: &Array1<f64>, _quantum_obs: &Array1<f64>) -> Result<f64> {
+        let start_total = std::time::Instant::now();
+        println!("[ADAPTER] ========================================");
+        println!("[ADAPTER] infer() ENTRY - observations.len()={}", observations.len());
+
         // Resize observations to 100 dimensions (ObservationModel requirement)
+        let resize_start = std::time::Instant::now();
         let obs_resized = if observations.len() != 100 {
             let mut resized = Array1::zeros(100);
             let n_copy = observations.len().min(100);
@@ -401,18 +435,34 @@ impl ActiveInferencePort for ActiveInferenceAdapter {
         } else {
             observations.clone()
         };
+        let resize_elapsed = resize_start.elapsed();
+        println!("[ADAPTER] Resize/clone took {:?}", resize_elapsed);
 
         #[cfg(feature = "cuda")]
         {
+            println!("[ADAPTER] CUDA feature ENABLED - Using GPU path");
+            let gpu_start = std::time::Instant::now();
             // GPU path: accelerated variational inference
-            self.inference_engine.infer_gpu(&mut self.hierarchical_model, &obs_resized)
+            let result = self.inference_engine.infer_gpu(&mut self.hierarchical_model, &obs_resized);
+            let gpu_elapsed = gpu_start.elapsed();
+            println!("[ADAPTER] inference_engine.infer_gpu() returned in {:?}", gpu_elapsed);
+
+            let total_elapsed = start_total.elapsed();
+            println!("[ADAPTER] TOTAL infer() time: {:?}", total_elapsed);
+            println!("[ADAPTER] ========================================");
+            result
         }
 
         #[cfg(not(feature = "cuda"))]
         {
+            println!("[ADAPTER] CUDA feature DISABLED - Using CPU path");
             // CPU path: standard variational inference
             let _components = self.inference_engine.infer(&mut self.hierarchical_model, &obs_resized);
             let free_energy = self.hierarchical_model.compute_free_energy(&obs_resized);
+
+            let total_elapsed = start_total.elapsed();
+            println!("[ADAPTER] TOTAL infer() time: {:?}", total_elapsed);
+            println!("[ADAPTER] ========================================");
             Ok(free_energy)
         }
     }

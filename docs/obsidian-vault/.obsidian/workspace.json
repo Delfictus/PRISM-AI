@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "04-Development/TSP Interactive Demo Plan.md",
+                "file": "04-Development/GPU Optimization Action Plan.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "TSP Interactive Demo Plan"
+              "title": "GPU Optimization Action Plan"
             }
           }
         ],
@@ -109,7 +109,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "04-Development/TSP Interactive Demo Plan.md",
+                "file": "04-Development/GPU Optimization Action Plan.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -119,7 +119,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for TSP Interactive Demo Plan"
+              "title": "Backlinks for GPU Optimization Action Plan"
             }
           },
           {
@@ -128,12 +128,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "04-Development/TSP Interactive Demo Plan.md",
+                "file": "04-Development/GPU Optimization Action Plan.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from TSP Interactive Demo Plan"
+              "title": "Outgoing links from GPU Optimization Action Plan"
             }
           },
           {
@@ -157,13 +157,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "04-Development/TSP Interactive Demo Plan.md",
+                "file": "04-Development/GPU Optimization Action Plan.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of TSP Interactive Demo Plan"
+              "title": "Outline of GPU Optimization Action Plan"
             }
           }
         ]
@@ -186,25 +186,36 @@
   },
   "active": "aaff34f4d9ed5b95",
   "lastOpenFiles": [
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800450456",
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800450158",
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800450048",
+    "04-Development/FINAL SUCCESS REPORT.md",
+    "04-Development/FINAL SUCCESS REPORT.md.tmp.1034076.1759800042311",
+    "05-Status/Current Status.md.tmp.1034076.1759800041890",
+    "05-Status/Current Status.md.tmp.1034076.1759800041489",
+    "06-Issues/Active Issues.md.tmp.1034076.1759800041141",
+    "06-Issues/Active Issues.md.tmp.1034076.1759800040873",
+    "04-Development/Neuromorphic Optimization COMPLETE.md",
+    "04-Development/Neuromorphic Optimization COMPLETE.md.tmp.1034076.1759800040606",
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800040341",
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800040106",
+    "04-Development/GPU Policy Evaluation COMPLETE.md",
+    "04-Development/Session 2025-10-06 Summary.md",
+    "05-Status/GPU Policy Evaluation Progress.md",
+    "04-Development/Full GPU Implementation Commitment.md",
+    "04-Development/Task 1.1.1 Re-evaluation.md",
+    "04-Development/Phase 1.1.1 Discovery Report.md",
+    "04-Development/Getting Started.md",
+    "04-Development/GPU Optimization Action Plan.md",
+    "04-Development/TSP Interactive Demo Plan.md",
     "08-Performance/Could PRISM-AI Beat AlphaFold - Optimization Path.md",
-    "08-Performance/Could PRISM-AI Beat AlphaFold - Optimization Path.md.tmp.640473.1759643675336",
     "08-Performance/Protein Folding vs AlphaFold - Honest Assessment.md",
-    "08-Performance/Protein Folding vs AlphaFold - Honest Assessment.md.tmp.640473.1759643194112",
-    "00-Index/Home.md.tmp.640473.1759643034507",
     "08-Performance/DIMACS Graph Coloring - Instant Win Strategy.md",
-    "08-Performance/DIMACS Graph Coloring - Instant Win Strategy.md.tmp.640473.1759642703942",
     "08-Performance/Instant Validation Benchmark Strategy.md",
-    "08-Performance/Instant Validation Benchmark Strategy.md.tmp.640473.1759641836087",
     "08-Performance/Competitive Analysis - TSP Solvers.md",
-    "08-Performance/Competitive Analysis - TSP Solvers.md.tmp.640473.1759641259987",
     "08-Performance/A3 H100 TSP Benchmark Estimates.md",
-    "08-Performance/A3 H100 TSP Benchmark Estimates.md.tmp.640473.1759635938160",
-    "00-Index/Home.md.tmp.640473.1759635124489",
-    "00-Index/Home.md.tmp.640473.1759635112758",
-    "00-Index/Home.md.tmp.640473.1759635106349",
     "04-Development/TSP Demo Canvas.canvas",
     "04-Development/Materials Discovery Demo Plan.md",
-    "04-Development/TSP Interactive Demo Plan.md",
     "04-Development/Materials Demo Canvas.canvas",
     "07-API-Reference/Use Cases and Responsibilities.md",
     "05-Status/Session Progress Canvas.canvas",
@@ -215,12 +226,7 @@
     "VAULT_CREATED.md",
     "README.md",
     "03-Modules/Module Reference.md",
-    "04-Development/Getting Started.md",
     "01-Project-Overview/Project Overview.md",
-    "Untitled.canvas",
-    "Untitled.md",
-    "2025-10-04.md",
-    "06-Issues/Active Issues.md",
-    "02-Architecture/Architecture Overview.md"
+    "Untitled.canvas"
   ]
 }

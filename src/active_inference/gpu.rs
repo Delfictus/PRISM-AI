@@ -108,6 +108,9 @@ impl ActiveInferenceGpu {
         var_prior: &Array1<f64>,
         obs_precision: &Array1<f64>
     ) -> Result<f64> {
+        let start = std::time::Instant::now();
+        println!("[GPU-AI] compute_free_energy_gpu() called");
+
         let stream = self.context.default_stream();
         let n = mean_posterior.len();
 
@@ -196,6 +199,9 @@ impl ActiveInferenceGpu {
         let accuracy = accuracy_vec[0];
         let free_energy = complexity - accuracy;
 
+        let elapsed = start.elapsed();
+        println!("[GPU-AI] compute_free_energy_gpu() completed in {:?}", elapsed);
+
         Ok(free_energy)
     }
 
@@ -207,6 +213,9 @@ impl ActiveInferenceGpu {
         observations: &Array1<f64>,
         precision: &Array1<f64>
     ) -> Result<()> {
+        let start = std::time::Instant::now();
+        println!("[GPU-AI] update_beliefs_gpu() called");
+
         let stream = self.context.default_stream();
         let state_dim = mean.len();
         let obs_dim = observations.len();
@@ -281,6 +290,9 @@ impl ActiveInferenceGpu {
             mean[i] = *val;
         }
 
+        let elapsed = start.elapsed();
+        println!("[GPU-AI] update_beliefs_gpu() completed in {:?}", elapsed);
+
         Ok(())
     }
 
@@ -290,11 +302,19 @@ impl ActiveInferenceGpu {
         model: &mut HierarchicalModel,
         observations: &Array1<f64>
     ) -> Result<f64> {
+        let start_total = std::time::Instant::now();
+        println!("[GPU-AI] ========================================");
+        println!("[GPU-AI] infer_gpu() STARTING");
+        println!("[GPU-AI] max_iterations.min(10) = {}", self.max_iterations.min(10));
+        println!("[GPU-AI] ========================================");
+
         // For now, use CPU inference (full GPU implementation is complex)
         // GPU kernels accelerate the critical inner loop operations
 
         // Simplified GPU-accelerated update
-        for _ in 0..self.max_iterations.min(10) {
+        let iterations = self.max_iterations.min(10);
+        for i in 0..iterations {
+            println!("[GPU-AI] --- Iteration {}/{} ---", i + 1, iterations);
             // Update beliefs using GPU kernels
             self.update_beliefs_gpu(
                 &mut model.level1.belief.mean,
@@ -304,8 +324,19 @@ impl ActiveInferenceGpu {
             )?;
         }
 
+        println!("[GPU-AI] Computing free energy on CPU (model.compute_free_energy)...");
+        let fe_start = std::time::Instant::now();
+
         // Compute free energy
         let free_energy = model.compute_free_energy(observations);
+
+        let fe_elapsed = fe_start.elapsed();
+        println!("[GPU-AI] CPU free_energy computation took {:?}", fe_elapsed);
+
+        let total_elapsed = start_total.elapsed();
+        println!("[GPU-AI] ========================================");
+        println!("[GPU-AI] infer_gpu() TOTAL TIME: {:?}", total_elapsed);
+        println!("[GPU-AI] ========================================");
 
         Ok(free_energy)
     }

@@ -19,8 +19,15 @@ pub mod gpu_inference;
 #[cfg(feature = "cuda")]
 pub mod gpu;
 
+// GPU-accelerated policy evaluation
+#[cfg(feature = "cuda")]
+pub mod gpu_policy_eval;
+
 #[cfg(feature = "cuda")]
 pub use gpu::ActiveInferenceGpu;
+
+#[cfg(feature = "cuda")]
+pub use gpu_policy_eval::GpuPolicyEvaluator;
 
 pub use generative_model::{GenerativeModel, PerformanceMetrics};
 pub use hierarchical_model::{HierarchicalModel, StateSpaceLevel, GaussianBelief, GeneralizedCoordinates};

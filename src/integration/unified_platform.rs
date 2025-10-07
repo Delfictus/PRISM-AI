@@ -312,9 +312,13 @@ impl UnifiedPlatform {
     /// Constitutional: Delegates to ActiveInferencePort
     fn active_inference(&mut self, observations: &Array1<f64>, quantum_obs: &Array1<f64>, targets: &Array1<f64>) -> Result<(Array1<f64>, f64, f64)> {
         let start = Instant::now();
+        println!("[PIPELINE] Phase 6 active_inference() ENTRY");
 
         // Delegate inference to adapter (CPU for now, GPU TODO)
+        let infer_start = Instant::now();
         let free_energy = self.active_inference.infer(observations, quantum_obs)?;
+        let infer_elapsed = infer_start.elapsed();
+        println!("[PIPELINE] active_inference.infer() took {:?}", infer_elapsed);
 
         // CONSTITUTIONAL REQUIREMENT: Free energy must be finite
         if !free_energy.is_finite() {
@@ -322,9 +326,13 @@ impl UnifiedPlatform {
         }
 
         // Select optimal action
+        let action_start = Instant::now();
         let action = self.active_inference.select_action(targets)?;
+        let action_elapsed = action_start.elapsed();
+        println!("[PIPELINE] select_action() took {:?}", action_elapsed);
 
         let latency = start.elapsed().as_secs_f64() * 1000.0;
+        println!("[PIPELINE] Phase 6 TOTAL latency: {:.3}ms", latency);
         Ok((action, latency, free_energy))
     }
 

@@ -22,6 +22,10 @@ pub struct GpuReservoirComputer {
     device: Arc<CudaContext>,
     cublas: Arc<CudaBlas>,
 
+    // Custom GEMV kernels (faster than cuBLAS for small matrices)
+    gemv_input_kernel: Option<Arc<CudaFunction>>,
+    gemv_reservoir_kernel: Option<Arc<CudaFunction>>,
+
     // GPU memory buffers - persistent allocation for performance
     gpu_weights_input: CudaSlice<f32>,     // Input weight matrix on GPU
     gpu_weights_reservoir: CudaSlice<f32>, // Reservoir weight matrix on GPU
@@ -70,11 +74,27 @@ impl Default for GpuConfig {
 }
 
 impl GpuReservoirComputer {
-    /// Create new GPU-accelerated reservoir computer
+    /// Create new GPU-accelerated reservoir computer (DEPRECATED)
     ///
-    /// This initializes CUDA device, allocates GPU memory, and sets up cuBLAS
-    /// for high-performance matrix operations on RTX 5070
+    /// Use `new_shared()` instead for Article V compliance
+    #[deprecated(since = "0.2.0", note = "Use new_shared() with shared CUDA context")]
     pub fn new(config: ReservoirConfig, gpu_config: GpuConfig) -> Result<Self> {
+        // Create own context (not recommended - violates Article V)
+        let device = CudaContext::new(gpu_config.device_id as usize)
+            .map_err(|e| anyhow::anyhow!("Failed to initialize CUDA context {}: {}", gpu_config.device_id, e))?;
+
+        // CudaContext::new() returns Arc<CudaContext>, so pass directly
+        Self::new_shared(config, device)
+    }
+
+    /// Create new GPU-accelerated reservoir computer with shared CUDA context
+    ///
+    /// Constitutional Compliance: Article V - Uses shared CUDA context
+    ///
+    /// # Arguments
+    /// * `config` - Reservoir configuration
+    /// * `context` - Shared CUDA context (prevents initialization overhead)
+    pub fn new_shared(config: ReservoirConfig, context: Arc<CudaContext>) -> Result<Self> {
         // Validate configuration parameters
         if config.size == 0 {
             return Err(anyhow::anyhow!("Reservoir size must be greater than 0"));
@@ -86,14 +106,17 @@ impl GpuReservoirComputer {
             return Err(anyhow::anyhow!("Leak rate must be between 0.0 and 1.0"));
         }
 
-        // Initialize CUDA context (RTX 5070) with error checking
-        let device = CudaContext::new(gpu_config.device_id as usize)
-            .map_err(|e| anyhow::anyhow!("Failed to initialize CUDA context {}: {}. Ensure NVIDIA drivers are installed and RTX 5070 is available.", gpu_config.device_id, e))?;
+        println!("[GPU-RESERVOIR] Using shared CUDA context (Article V compliance)");
 
-        // Initialize cuBLAS for optimized matrix operations
-        let stream = device.default_stream();
+        // Initialize cuBLAS for optimized matrix operations using shared context
+        let stream = context.default_stream();
         let cublas = Arc::new(CudaBlas::new(stream.clone())
             .map_err(|e| anyhow::anyhow!("Failed to initialize cuBLAS: {}", e))?);
+
+        let device = context;
+
+        // Load custom GEMV kernels for better performance
+        let (gemv_input_kernel, gemv_reservoir_kernel) = Self::load_gemv_kernels(&device)?;
 
         // Calculate matrix sizes for GPU memory allocation with overflow checking
         let reservoir_matrix_size = config.size.checked_mul(config.size)
@@ -139,6 +162,8 @@ impl GpuReservoirComputer {
             config,
             device,
             cublas,
+            gemv_input_kernel,
+            gemv_reservoir_kernel,
             gpu_weights_input,
             gpu_weights_reservoir,
             gpu_state_current,
@@ -156,6 +181,34 @@ impl GpuReservoirComputer {
         Ok(gpu_reservoir)
     }
 
+    /// Load custom GEMV kernels from PTX
+    fn load_gemv_kernels(context: &Arc<CudaContext>) -> Result<(Option<Arc<CudaFunction>>, Option<Arc<CudaFunction>>)> {
+        let ptx_path = "target/ptx/neuromorphic_gemv.ptx";
+
+        if !std::path::Path::new(ptx_path).exists() {
+            println!("[GPU-RESERVOIR] Custom GEMV kernels not found, will use cuBLAS");
+            return Ok((None, None));
+        }
+
+        let ptx = cudarc::nvrtc::Ptx::from_file(ptx_path);
+        let module = context.load_module(ptx)
+            .map_err(|e| anyhow::anyhow!("Failed to load neuromorphic GEMV PTX: {}", e))?;
+
+        let input_kernel = Arc::new(
+            module.load_function("matvec_input_kernel")
+                .map_err(|e| anyhow::anyhow!("Failed to load matvec_input_kernel: {}", e))?
+        );
+
+        let reservoir_kernel = Arc::new(
+            module.load_function("matvec_reservoir_kernel")
+                .map_err(|e| anyhow::anyhow!("Failed to load matvec_reservoir_kernel: {}", e))?
+        );
+
+        println!("[GPU-RESERVOIR] Custom GEMV kernels loaded successfully");
+
+        Ok((Some(input_kernel), Some(reservoir_kernel)))
+    }
+
     /// Initialize weight matrices on GPU with optimized patterns
     fn initialize_weights(&mut self) -> Result<()> {
         // Generate CPU-side weight matrices
@@ -168,8 +221,14 @@ impl GpuReservoirComputer {
 
         // Upload to GPU memory
         let stream = self.device.default_stream();
+        println!("[GPU-RESERVOIR] Uploading weight matrices to GPU...");
+        let upload_start = std::time::Instant::now();
         self.gpu_weights_input = stream.memcpy_stod(&input_weights_f32)?;
         self.gpu_weights_reservoir = stream.memcpy_stod(&reservoir_weights_f32)?;
+
+        // CRITICAL: Force synchronization to ensure weights are uploaded NOW
+        stream.synchronize().map_err(|e| anyhow::anyhow!("Weight upload sync failed: {}", e))?;
+        println!("[GPU-RESERVOIR] Weight upload + sync took {:?}", upload_start.elapsed());
 
         Ok(())
     }
@@ -275,9 +334,12 @@ impl GpuReservoirComputer {
         }
 
         let start_time = std::time::Instant::now();
+        println!("[GPU-RESERVOIR] process_gpu() ENTRY");
 
         // Convert spike pattern to input vector
+        let conv_start = std::time::Instant::now();
         let input_vector = self.pattern_to_input_vector(pattern);
+        println!("[GPU-RESERVOIR] pattern_to_input_vector() took {:?}", conv_start.elapsed());
 
         // Validate input vector size
         if input_vector.len() != self.config.input_size {
@@ -286,66 +348,152 @@ impl GpuReservoirComputer {
         }
 
         // Copy input to GPU with error handling
+        let upload_start = std::time::Instant::now();
         let input_f32: Vec<f32> = input_vector.iter().map(|&x| x as f32).collect();
         let stream = self.device.default_stream();
         self.gpu_input_buffer = stream.memcpy_stod(&input_f32)
             .map_err(|e| anyhow::anyhow!("Failed to copy input to GPU: {}", e))?;
+        println!("[GPU-RESERVOIR] Upload to GPU took {:?}", upload_start.elapsed());
 
         // Swap current and previous states (efficient state management)
         std::mem::swap(&mut self.gpu_state_current, &mut self.gpu_state_previous);
+
+        // Ensure all previous operations complete before timing
+        let stream = self.device.default_stream();
+        stream.synchronize().map_err(|e| anyhow::anyhow!("GPU sync failed: {}", e))?;
 
         // CORE GPU COMPUTATION: Matrix-vector operations using cuBLAS
         // This single operation provides most of the 89% speedup
 
         // Step 1: Compute input contribution: W_in * u(t)
-        unsafe {
-            let gemv_config = GemvConfig {
-                trans: cublasOperation_t::CUBLAS_OP_N,  // No transpose
-                m: self.config.size as i32,             // M (rows)
-                n: self.config.input_size as i32,       // N (cols)
-                alpha: 1.0f32,
-                lda: self.config.size as i32,           // Leading dimension
-                incx: 1,                                 // x increment
-                beta: 0.0f32,
-                incy: 1,                                 // y increment
+        let gemv1_start = std::time::Instant::now();
+        println!("[GPU-RESERVOIR] GEMV 1 dims: M={}, N={} ({}x{} matrix)",
+                 self.config.size, self.config.input_size,
+                 self.config.size, self.config.input_size);
+
+        // Use custom kernel if available (much faster than cuBLAS for small matrices)
+        if let Some(ref kernel) = self.gemv_input_kernel {
+            println!("[GPU-RESERVOIR] Using CUSTOM kernel for input GEMV");
+
+            let threads = 256;
+            let blocks = (self.config.size + threads - 1) / threads;
+            let cfg = cudarc::driver::LaunchConfig {
+                grid_dim: (blocks as u32, 1, 1),
+                block_dim: (threads as u32, 1, 1),
+                shared_mem_bytes: 0,
             };
-            self.cublas.gemv(
-                gemv_config,                    // Configuration
-                &self.gpu_weights_input,        // Matrix A
-                &self.gpu_input_buffer,         // Vector x
-                &mut self.gpu_temp_buffer,      // Vector y
-            )?;
+
+            let alpha = 1.0f32;
+            let beta = 0.0f32;
+            let m_i32 = self.config.size as i32;
+            let n_i32 = self.config.input_size as i32;
+
+            let mut launch = stream.launch_builder(kernel);
+            launch.arg(&self.gpu_weights_input);
+            launch.arg(&self.gpu_input_buffer);
+            launch.arg(&mut self.gpu_temp_buffer);
+            launch.arg(&alpha);
+            launch.arg(&beta);
+            launch.arg(&m_i32);
+            launch.arg(&n_i32);
+            unsafe { launch.launch(cfg)?; }
+            stream.synchronize()?;
+        } else {
+            println!("[GPU-RESERVOIR] Using cuBLAS for input GEMV");
+
+            unsafe {
+                let gemv_config = GemvConfig {
+                    trans: cublasOperation_t::CUBLAS_OP_N,
+                    m: self.config.size as i32,
+                    n: self.config.input_size as i32,
+                    alpha: 1.0f32,
+                    lda: self.config.size as i32,
+                    incx: 1,
+                    beta: 0.0f32,
+                    incy: 1,
+                };
+
+                self.cublas.gemv(
+                    gemv_config,
+                    &self.gpu_weights_input,
+                    &self.gpu_input_buffer,
+                    &mut self.gpu_temp_buffer,
+                )?;
+                stream.synchronize()?;
+            }
         }
+
+        println!("[GPU-RESERVOIR] GEMV 1 (W_in * u) took {:?}", gemv1_start.elapsed());
 
         // Step 2: Compute recurrent contribution: W * x(t-1) and add to temp buffer
-        unsafe {
-            let gemv_config = GemvConfig {
-                trans: cublasOperation_t::CUBLAS_OP_N,  // No transpose
-                m: self.config.size as i32,             // M
-                n: self.config.size as i32,             // N
-                alpha: 1.0f32,
-                lda: self.config.size as i32,           // Leading dimension
-                incx: 1,                                 // x increment
-                beta: 1.0f32,                           // Add to existing temp_buffer
-                incy: 1,                                 // y increment
+        let gemv2_start = std::time::Instant::now();
+
+        // Use custom kernel if available
+        if let Some(ref kernel) = self.gemv_reservoir_kernel {
+            println!("[GPU-RESERVOIR] Using CUSTOM kernel for reservoir GEMV");
+
+            let threads = 256;
+            let blocks = (self.config.size + threads - 1) / threads;
+            let cfg = cudarc::driver::LaunchConfig {
+                grid_dim: (blocks as u32, 1, 1),
+                block_dim: (threads as u32, 1, 1),
+                shared_mem_bytes: 0,
             };
-            self.cublas.gemv(
-                gemv_config,                    // Configuration
-                &self.gpu_weights_reservoir,    // Matrix A
-                &self.gpu_state_previous,       // Vector x
-                &mut self.gpu_temp_buffer,      // Vector y
-            )?;
+
+            let alpha = 1.0f32;
+            let beta = 1.0f32;  // Add to existing temp_buffer
+            let m_i32 = self.config.size as i32;
+
+            let mut launch = stream.launch_builder(kernel);
+            launch.arg(&self.gpu_weights_reservoir);
+            launch.arg(&self.gpu_state_previous);
+            launch.arg(&mut self.gpu_temp_buffer);
+            launch.arg(&alpha);
+            launch.arg(&beta);
+            launch.arg(&m_i32);
+            unsafe { launch.launch(cfg)?; }
+            stream.synchronize()?;
+        } else {
+            println!("[GPU-RESERVOIR] Using cuBLAS for reservoir GEMV");
+
+            unsafe {
+                let gemv_config = GemvConfig {
+                    trans: cublasOperation_t::CUBLAS_OP_N,
+                    m: self.config.size as i32,
+                    n: self.config.size as i32,
+                    alpha: 1.0f32,
+                    lda: self.config.size as i32,
+                    incx: 1,
+                    beta: 1.0f32,
+                    incy: 1,
+                };
+                self.cublas.gemv(
+                    gemv_config,
+                    &self.gpu_weights_reservoir,
+                    &self.gpu_state_previous,
+                    &mut self.gpu_temp_buffer,
+                )?;
+                stream.synchronize()?;
+            }
         }
 
+        println!("[GPU-RESERVOIR] GEMV 2 (W * x) took {:?}", gemv2_start.elapsed());
+
         // Step 3: Apply leaky integration and nonlinearity (custom CUDA kernel)
+        let kernel_start = std::time::Instant::now();
         self.apply_leaky_integration_kernel()?;
+        println!("[GPU-RESERVOIR] Leaky integration kernel took {:?}", kernel_start.elapsed());
 
         // Copy result back to CPU for interface compatibility
+        let download_start = std::time::Instant::now();
         let stream = self.device.default_stream();
         self.cpu_state = stream.memcpy_dtov(&self.gpu_state_current)?;
+        println!("[GPU-RESERVOIR] Download state took {:?}", download_start.elapsed());
 
         // Calculate dynamics metrics (CPU-side for now)
+        let metrics_start = std::time::Instant::now();
         let dynamics = self.calculate_dynamics_cpu();
+        println!("[GPU-RESERVOIR] CPU metrics calculation took {:?}", metrics_start.elapsed());
 
         // Update performance statistics
         let total_time = start_time.elapsed();
