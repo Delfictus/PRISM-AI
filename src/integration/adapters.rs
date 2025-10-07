@@ -46,7 +46,7 @@ impl NeuromorphicAdapter {
                 context,  // Pass shared context!
             )?,
             spike_history: Vec::new(),
-            threshold: 0.5,
+            threshold: 0.01,  // Lowered from 0.5 to handle small values (financial data, etc.)
         })
     }
 }
