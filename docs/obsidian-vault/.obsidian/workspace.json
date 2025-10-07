@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "04-Development/GPU Optimization Action Plan.md",
+                "file": "04-Development/System Utilization Plan.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "GPU Optimization Action Plan"
+              "title": "System Utilization Plan"
             }
           }
         ],
@@ -109,7 +109,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "04-Development/GPU Optimization Action Plan.md",
+                "file": "04-Development/System Utilization Plan.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -119,7 +119,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for GPU Optimization Action Plan"
+              "title": "Backlinks for System Utilization Plan"
             }
           },
           {
@@ -128,12 +128,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "04-Development/GPU Optimization Action Plan.md",
+                "file": "04-Development/System Utilization Plan.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from GPU Optimization Action Plan"
+              "title": "Outgoing links from System Utilization Plan"
             }
           },
           {
@@ -157,13 +157,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "04-Development/GPU Optimization Action Plan.md",
+                "file": "04-Development/System Utilization Plan.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of GPU Optimization Action Plan"
+              "title": "Outline of System Utilization Plan"
             }
           }
         ]
@@ -186,27 +186,28 @@
   },
   "active": "aaff34f4d9ed5b95",
   "lastOpenFiles": [
+    "04-Development/GPU Optimization Action Plan.md",
+    "04-Development/System Utilization Plan.md",
+    "04-Development/System Utilization Plan.md.tmp.1034076.1759802314160",
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759802016073",
+    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759802015850",
+    "04-Development/GPU Policy Evaluation COMPLETE.md",
+    "04-Development/Action Plan Re-evaluation.md",
+    "04-Development/Action Plan Re-evaluation.md.tmp.1034076.1759801687567",
+    "05-Status/Current Status.md.tmp.1034076.1759801624275",
+    "05-Status/Current Status.md.tmp.1034076.1759801624011",
+    "05-Status/Current Status.md.tmp.1034076.1759801623794",
+    "05-Status/Current Status.md.tmp.1034076.1759801623677",
     "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800450456",
     "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800450158",
-    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800450048",
     "04-Development/FINAL SUCCESS REPORT.md",
-    "04-Development/FINAL SUCCESS REPORT.md.tmp.1034076.1759800042311",
-    "05-Status/Current Status.md.tmp.1034076.1759800041890",
-    "05-Status/Current Status.md.tmp.1034076.1759800041489",
-    "06-Issues/Active Issues.md.tmp.1034076.1759800041141",
-    "06-Issues/Active Issues.md.tmp.1034076.1759800040873",
     "04-Development/Neuromorphic Optimization COMPLETE.md",
-    "04-Development/Neuromorphic Optimization COMPLETE.md.tmp.1034076.1759800040606",
-    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800040341",
-    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759800040106",
-    "04-Development/GPU Policy Evaluation COMPLETE.md",
     "04-Development/Session 2025-10-06 Summary.md",
     "05-Status/GPU Policy Evaluation Progress.md",
     "04-Development/Full GPU Implementation Commitment.md",
     "04-Development/Task 1.1.1 Re-evaluation.md",
     "04-Development/Phase 1.1.1 Discovery Report.md",
     "04-Development/Getting Started.md",
-    "04-Development/GPU Optimization Action Plan.md",
     "04-Development/TSP Interactive Demo Plan.md",
     "08-Performance/Could PRISM-AI Beat AlphaFold - Optimization Path.md",
     "08-Performance/Protein Folding vs AlphaFold - Honest Assessment.md",
@@ -226,7 +227,6 @@
     "VAULT_CREATED.md",
     "README.md",
     "03-Modules/Module Reference.md",
-    "01-Project-Overview/Project Overview.md",
     "Untitled.canvas"
   ]
 }
