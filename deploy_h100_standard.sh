@@ -5,7 +5,7 @@
 set -e
 
 PROJECT_ID="aresedge-engine"
-ZONE="us-central1-a"
+ZONE="us-central1-b"  # Zone b has H100 availability
 INSTANCE_NAME="prism-h100-benchmark"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/prism-ai-h100-benchmark:latest"
 
