@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "04-Development/Official World Record Validation Plan.md",
+                "file": "04-Development/System Utilization Plan.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Official World Record Validation Plan"
+              "title": "System Utilization Plan"
             }
           }
         ],
@@ -89,8 +89,7 @@
               "title": "Bookmarks"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "horizontal",
@@ -187,7 +186,11 @@
   },
   "active": "aaff34f4d9ed5b95",
   "lastOpenFiles": [
+    "04-Development/System Utilization Plan.md.tmp.1083207.1759952061976",
+    "04-Development/System Utilization Plan.md.tmp.1083207.1759952061765",
     "04-Development/Official World Record Validation Plan.md",
+    "05-Status/Current Status.md.tmp.1083207.1759950846061",
+    "04-Development/Official World Record Validation Plan.md.tmp.1083207.1759950845755",
     "04-Development/Next Steps Re-evaluation.md",
     "04-Development/Next Steps Re-evaluation.md.tmp.1083207.1759949991407",
     "05-Status/Current Status.md.tmp.1083207.1759949991223",
@@ -202,9 +205,6 @@
     "04-Development/Phase 1 Benchmarking Status.md",
     "04-Development/Phase 1 Benchmarking Status.md.tmp.1034076.1759802787044",
     "04-Development/GPU Optimization Action Plan.md",
-    "04-Development/System Utilization Plan.md.tmp.1034076.1759802314160",
-    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759802016073",
-    "04-Development/GPU Optimization Action Plan.md.tmp.1034076.1759802015850",
     "04-Development/GPU Policy Evaluation COMPLETE.md",
     "04-Development/FINAL SUCCESS REPORT.md",
     "04-Development/Neuromorphic Optimization COMPLETE.md",
@@ -226,7 +226,6 @@
     "04-Development/Materials Demo Canvas.canvas",
     "07-API-Reference/Use Cases and Responsibilities.md",
     "05-Status/Session Progress Canvas.canvas",
-    "05-Status/Current Status.md",
     "02-Architecture/System Architecture Canvas.canvas",
     "Untitled.canvas"
   ]

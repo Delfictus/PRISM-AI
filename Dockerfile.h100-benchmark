@@ -1,0 +1,148 @@
+# Dockerfile for PRISM-AI H100 Benchmark Runner
+# Target: GCP with H100 GPUs
+# Purpose: Official DIMACS/TSPLIB benchmark validation
+
+# Use NVIDIA CUDA 12.3 base for H100 support (SM 9.0)
+FROM nvidia/cuda:12.3.1-devel-ubuntu22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# CUDA environment
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    pkg-config \
+    libssl-dev \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify CUDA and check for H100
+RUN nvcc --version
+RUN nvidia-smi || echo "GPU detection will happen at runtime"
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustc --version && cargo --version
+
+# Set working directory
+WORKDIR /prism-ai
+
+# Copy project files
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY src ./src
+COPY examples ./examples
+COPY benchmarks ./benchmarks
+
+# Build CUDA kernels with H100 architecture (SM 9.0)
+# Also include SM 8.0, 8.6, 8.9 for compatibility
+RUN echo "Building CUDA kernels for H100 (SM 9.0)..."
+
+# Build the project with CUDA features
+RUN cargo build --release --features cuda --lib
+
+# Build benchmark examples
+RUN cargo build --release --features cuda --example test_full_gpu
+RUN cargo build --release --features cuda --example world_record_dashboard
+RUN cargo build --release --features cuda --example test_mtx_parser
+
+# Create benchmark runner script
+RUN cat > /usr/local/bin/run_benchmarks.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+
+echo "==================================================================="
+echo "PRISM-AI H100 Benchmark Runner"
+echo "==================================================================="
+echo ""
+
+# Detect GPU
+nvidia-smi || { echo "ERROR: No GPU detected!"; exit 1; }
+
+echo ""
+echo "GPU Information:"
+nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader
+echo ""
+
+cd /prism-ai
+
+# Run system validation test
+echo "=== Test 1: System Validation ==="
+echo "Running test_full_gpu to verify 4.07ms baseline..."
+timeout 60 cargo run --release --features cuda --example test_full_gpu 2>&1 | tee /tmp/test_full_gpu.log
+echo ""
+
+# Run world record dashboard
+echo "=== Test 2: World Record Dashboard ==="
+echo "Running 4 benchmark scenarios..."
+timeout 300 cargo run --release --features cuda --example world_record_dashboard 2>&1 | tee /tmp/world_record.log
+echo ""
+
+# Test MTX parser
+echo "=== Test 3: MTX Parser ==="
+echo "Testing official DIMACS instance loading..."
+timeout 30 cargo run --release --features cuda --example test_mtx_parser 2>&1 | tee /tmp/mtx_parser.log
+echo ""
+
+echo "==================================================================="
+echo "Benchmark Results Saved:"
+echo "  - /tmp/test_full_gpu.log"
+echo "  - /tmp/world_record.log"
+echo "  - /tmp/mtx_parser.log"
+echo "==================================================================="
+
+# Extract key metrics
+echo ""
+echo "=== PERFORMANCE SUMMARY ==="
+grep "Total Latency:" /tmp/test_full_gpu.log || echo "Latency not found"
+grep "vs World Record:" /tmp/world_record.log | head -4 || echo "Speedups not found"
+grep "Successfully parsed" /tmp/mtx_parser.log || echo "Parser status not found"
+
+SCRIPT
+
+RUN chmod +x /usr/local/bin/run_benchmarks.sh
+
+# Create entrypoint
+RUN cat > /entrypoint.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+
+echo "PRISM-AI Container Starting..."
+echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'Not detected')"
+echo ""
+
+# Default: Run benchmarks
+if [ "$1" = "benchmark" ]; then
+    exec /usr/local/bin/run_benchmarks.sh
+elif [ "$1" = "shell" ]; then
+    exec /bin/bash
+else
+    exec "$@"
+fi
+SCRIPT
+
+RUN chmod +x /entrypoint.sh
+
+# Environment variables for runtime
+ENV RUST_BACKTRACE=1
+ENV RUST_LOG=info
+
+# Labels
+LABEL org.opencontainers.image.title="PRISM-AI H100 Benchmark"
+LABEL org.opencontainers.image.description="Official DIMACS/TSPLIB benchmark runner for H100 GPUs"
+LABEL org.opencontainers.image.version="0.2.0"
+LABEL ai.prism.gpu.target="H100"
+LABEL ai.prism.cuda="12.3"
+LABEL ai.prism.compute.capability="9.0"
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["benchmark"]
