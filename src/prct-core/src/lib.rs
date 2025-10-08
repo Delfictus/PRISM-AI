@@ -23,6 +23,7 @@ pub use algorithm::*;
 pub use drpp_algorithm::*;
 pub use coupling::*;
 pub use errors::*;
+pub use dimacs_parser::{parse_dimacs_file, parse_mtx_file, parse_graph_file};
 
 // Re-export shared types for convenience
 pub use shared_types::*;
