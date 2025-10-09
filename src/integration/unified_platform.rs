@@ -21,6 +21,7 @@ use std::sync::Arc;
 use ndarray::{Array1, Array2};
 use anyhow::{Result, anyhow};
 use cudarc::driver::CudaContext;
+use shared_types::{PhaseField, KuramotoState};
 
 use crate::statistical_mechanics::ThermodynamicState;
 use super::cross_domain_bridge::{CrossDomainBridge, BridgeMetrics};
@@ -59,6 +60,10 @@ pub struct PlatformOutput {
     pub uncertainties: Array1<f64>,
     /// Performance metrics
     pub metrics: PerformanceMetrics,
+    /// Quantum phase field state (for graph coloring)
+    pub phase_field: Option<PhaseField>,
+    /// Kuramoto synchronization state (for graph coloring)
+    pub kuramoto_state: Option<KuramotoState>,
 }
 
 /// Performance metrics for monitoring
@@ -422,11 +427,17 @@ impl UnifiedPlatform {
         let predictions = Array1::zeros(input.sensory_data.len());
         let uncertainties = Array1::ones(input.sensory_data.len());
 
+        // Extract phase field and Kuramoto state for graph coloring
+        let phase_field = self.quantum.get_phase_field();
+        let kuramoto_state = self.thermodynamic.get_kuramoto_state();
+
         Ok(PlatformOutput {
             control_signals,
             predictions,
             uncertainties,
             metrics,
+            phase_field,
+            kuramoto_state,
         })
     }
 

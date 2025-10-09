@@ -283,6 +283,27 @@ impl ThermodynamicPort for ThermodynamicAdapter {
             }
         }
     }
+
+    fn get_kuramoto_state(&self) -> Option<shared_types::KuramotoState> {
+        #[cfg(feature = "cuda")]
+        {
+            self.network.get_kuramoto_state().ok()
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            // CPU path: extract from network state
+            let state = self.network.state();
+            let n = state.phases.len();
+            Some(shared_types::KuramotoState {
+                phases: state.phases.clone(),
+                natural_frequencies: vec![1.0; n], // Default frequencies
+                coupling_matrix: vec![self.config.coupling_strength; n * n],
+                order_parameter: 0.0, // TODO: Compute from phases
+                mean_phase: state.phases.iter().sum::<f64>() / n as f64,
+            })
+        }
+    }
 }
 
 /// GPU-accelerated quantum adapter
@@ -332,6 +353,32 @@ impl QuantumPort for QuantumAdapter {
 
     fn get_observables(&self) -> Array1<f64> {
         self.amplitudes.clone()
+    }
+
+    fn get_phase_field(&self) -> Option<shared_types::PhaseField> {
+        let n = self.phases.len();
+
+        // Compute coherence matrix (simple version: phase difference)
+        let mut coherence = vec![0.0; n * n];
+        for i in 0..n {
+            for j in 0..n {
+                let phase_diff = (self.phases[i] - self.phases[j]).abs();
+                coherence[i * n + j] = (1.0 - phase_diff / std::f64::consts::PI).max(0.0);
+            }
+        }
+
+        // Compute order parameter
+        let (sum_cos, sum_sin): (f64, f64) = self.phases.iter()
+            .map(|&p| (p.cos(), p.sin()))
+            .fold((0.0, 0.0), |(c, s), (pc, ps)| (c + pc, s + ps));
+        let order_parameter = ((sum_cos * sum_cos + sum_sin * sum_sin).sqrt() / n as f64).min(1.0);
+
+        Some(shared_types::PhaseField {
+            phases: self.phases.to_vec(),
+            coherence_matrix: coherence,
+            order_parameter,
+            resonance_frequency: 1.0, // TODO: Extract from quantum state
+        })
     }
 }
 

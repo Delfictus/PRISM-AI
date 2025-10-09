@@ -5,6 +5,7 @@
 
 use ndarray::{Array1, Array2};
 use anyhow::Result;
+use shared_types::{KuramotoState, PhaseField};
 
 use crate::statistical_mechanics::ThermodynamicState;
 
@@ -33,6 +34,9 @@ pub trait ThermodynamicPort: Send + Sync {
 
     /// Get current entropy production rate
     fn entropy_production(&self) -> f64;
+
+    /// Get Kuramoto synchronization state
+    fn get_kuramoto_state(&self) -> Option<KuramotoState>;
 }
 
 /// Quantum processing port
@@ -42,6 +46,9 @@ pub trait QuantumPort: Send + Sync {
 
     /// Get quantum observables
     fn get_observables(&self) -> Array1<f64>;
+
+    /// Get phase field state
+    fn get_phase_field(&self) -> Option<PhaseField>;
 }
 
 /// Active inference port

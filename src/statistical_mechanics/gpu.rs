@@ -310,6 +310,53 @@ impl ThermodynamicGpu {
     pub fn entropy_history(&self) -> &[f64] {
         &self.entropy_history
     }
+
+    /// Get Kuramoto synchronization state
+    pub fn get_kuramoto_state(&self) -> Result<shared_types::KuramotoState> {
+        let stream = self.context.default_stream();
+        let n = self.config.n_oscillators;
+
+        // Download phases from GPU
+        let phases_vec = stream.memcpy_dtov(&self.phases)?;
+
+        // Download coupling matrix
+        let coupling_vec = stream.memcpy_dtov(&self.coupling_matrix)?;
+
+        // Compute order parameter on GPU
+        let mut order_real: CudaSlice<f64> = stream.alloc_zeros(1)?;
+        let mut order_imag: CudaSlice<f64> = stream.alloc_zeros(1)?;
+
+        let threads = 256;
+        let blocks = (n + threads - 1) / threads;
+        let cfg = LaunchConfig {
+            grid_dim: (blocks as u32, 1, 1),
+            block_dim: (threads as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let n_i32 = n as i32;
+        let mut launch_order = stream.launch_builder(&self.order_kernel);
+        launch_order.arg(&self.phases);
+        launch_order.arg(&mut order_real);
+        launch_order.arg(&mut order_imag);
+        launch_order.arg(&n_i32);
+        unsafe { launch_order.launch(cfg)?; }
+
+        let order_real_vec = stream.memcpy_dtov(&order_real)?;
+        let order_imag_vec = stream.memcpy_dtov(&order_imag)?;
+
+        // Compute order parameter and mean phase
+        let order_parameter = (order_real_vec[0]*order_real_vec[0] + order_imag_vec[0]*order_imag_vec[0]).sqrt() / (n as f64);
+        let mean_phase = order_imag_vec[0].atan2(order_real_vec[0]);
+
+        Ok(shared_types::KuramotoState {
+            phases: phases_vec,
+            natural_frequencies: vec![1.0; n], // Default frequencies
+            coupling_matrix: coupling_vec,
+            order_parameter: order_parameter.min(1.0),
+            mean_phase,
+        })
+    }
 }
 
 #[cfg(test)]
