@@ -1,0 +1,93 @@
+# Multi-GPU Runtime Dockerfile for 8× H200 SXM
+# Single process using all 8 GPUs simultaneously
+
+FROM nvidia/cuda:12.3.1-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:/usr/lib/wsl/lib:${LD_LIBRARY_PATH}
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    libopenblas0 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /prism-ai
+
+# Copy 8-GPU parallel binary
+COPY target/release/examples/tsp_8gpu_parallel /usr/local/bin/tsp_8gpu
+RUN chmod +x /usr/local/bin/tsp_8gpu
+
+# Copy benchmark data
+COPY benchmarks/tsp/pla85900.tsp /prism-ai/benchmarks/tsp/pla85900.tsp
+
+# Copy CUDA PTX files
+COPY target/ptx/*.ptx /prism-ai/target/ptx/
+
+# Create output directory
+RUN mkdir -p /output
+
+# Create entrypoint
+RUN cat > /entrypoint.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  PRISM-AI 8-GPU Parallel TSP Benchmark                      ║"
+echo "║  All GPUs in Single Process                                 ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+# Check GPUs
+echo "🔍 Detecting GPUs..."
+if command -v nvidia-smi &> /dev/null; then
+    nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
+    GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+    echo ""
+    echo "✅ Found $GPU_COUNT GPU(s)"
+else
+    echo "⚠️  nvidia-smi not available"
+    GPU_COUNT=1
+fi
+echo ""
+
+# Configuration
+TSP_FILE="${TSP_FILE:-/prism-ai/benchmarks/tsp/pla85900.tsp}"
+NUM_CITIES="${NUM_CITIES:-85900}"
+NUM_GPUS="${NUM_GPUS:-$GPU_COUNT}"
+
+echo "📋 Configuration:"
+echo "  TSP file:     $TSP_FILE"
+echo "  Total cities: $NUM_CITIES"
+echo "  GPUs to use:  $NUM_GPUS"
+echo "  Per GPU:      ~$((NUM_CITIES / NUM_GPUS)) cities"
+echo ""
+
+# Run 8-GPU parallel benchmark
+cd /prism-ai
+exec /usr/local/bin/tsp_8gpu "$TSP_FILE" 2>&1 | tee /output/benchmark.log
+EOF
+
+RUN chmod +x /entrypoint.sh
+
+# Environment variables
+ENV RUST_BACKTRACE=1
+ENV RUST_LOG=info
+ENV NUM_CITIES=85900
+ENV NUM_GPUS=8
+
+# Labels
+LABEL org.opencontainers.image.title="PRISM-AI 8-GPU TSP H200"
+LABEL org.opencontainers.image.description="8-GPU parallel TSP solver for H200 SXM"
+LABEL org.opencontainers.image.version="2.0.0"
+LABEL ai.prism.gpu.target="H200"
+LABEL ai.prism.gpu.count="8"
+LABEL ai.prism.cuda="12.3"
+LABEL ai.prism.benchmark="pla85900"
+
+VOLUME ["/output"]
+
+ENTRYPOINT ["/entrypoint.sh"]

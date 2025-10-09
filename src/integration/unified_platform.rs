@@ -183,12 +183,20 @@ impl UnifiedPlatform {
     /// - GPU-first adapters (neuromorphic, quantum, info flow)
     /// - Hexagonal architecture with port/adapter pattern
     pub fn new(n_dimensions: usize) -> Result<Self> {
-        println!("[Platform] Initializing GPU-accelerated unified platform...");
+        Self::new_with_device(n_dimensions, 0)
+    }
 
-        // Step 1: Create shared CUDA context (single GPU resource pool)
-        let cuda_context = CudaContext::new(0)
-            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?;
-        println!("[Platform] ✓ CUDA context created (device 0)");
+    /// Create new unified platform with specific GPU device
+    ///
+    /// Use this for multi-GPU setups where you want to assign different
+    /// platform instances to different GPUs
+    pub fn new_with_device(n_dimensions: usize, device_id: usize) -> Result<Self> {
+        println!("[Platform] Initializing GPU-accelerated unified platform on device {}...", device_id);
+
+        // Step 1: Create shared CUDA context for specified device
+        let cuda_context = CudaContext::new(device_id)
+            .map_err(|e| anyhow!("Failed to create CUDA context on device {}: {}", device_id, e))?;
+        println!("[Platform] ✓ CUDA context created (device {})", device_id);
 
         // Step 2: Initialize GPU-accelerated adapters with shared context
 
