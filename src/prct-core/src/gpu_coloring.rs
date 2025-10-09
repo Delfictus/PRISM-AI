@@ -7,7 +7,7 @@ use crate::errors::*;
 use shared_types::*;
 use std::sync::Arc;
 use anyhow::{Result, anyhow};
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig, DeviceRepr, ValidAsZeroBits, PushKernelArg};
 
 /// GPU-accelerated parallel coloring search
 pub struct GpuColoringSearch {
@@ -19,8 +19,9 @@ pub struct GpuColoringSearch {
 impl GpuColoringSearch {
     /// Create new GPU coloring search engine
     pub fn new() -> Result<Self> {
-        let context = Arc::new(CudaContext::new(0)
-            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?);
+        let context = CudaContext::new(0)
+            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?;
+        let context = Arc::new(context);
 
         // Load PTX module
         let ptx_path = "target/ptx/parallel_coloring.ptx";
@@ -93,19 +94,19 @@ impl GpuColoringSearch {
         let max_colors_i32 = target_colors as i32;
         let seed = 12345u64;
 
-        let mut launch = stream.launch_builder(&self.greedy_kernel);
-        launch.arg(&adjacency_gpu);
-        launch.arg(&phases_gpu);
-        launch.arg(&order_gpu);
-        launch.arg(&coherence_gpu);
-        launch.arg(&mut colorings_gpu);
-        launch.arg(&mut chromatic_gpu);
-        launch.arg(&mut conflicts_gpu);
-        launch.arg(&n_i32);
-        launch.arg(&n_attempts_i32);
-        launch.arg(&max_colors_i32);
-        launch.arg(&seed);
-        unsafe { launch.launch(cfg)?; }
+        let mut launch_greedy = stream.launch_builder(&self.greedy_kernel);
+        launch_greedy.arg(&adjacency_gpu);
+        launch_greedy.arg(&phases_gpu);
+        launch_greedy.arg(&order_gpu);
+        launch_greedy.arg(&coherence_gpu);
+        launch_greedy.arg(&mut colorings_gpu);
+        launch_greedy.arg(&mut chromatic_gpu);
+        launch_greedy.arg(&mut conflicts_gpu);
+        launch_greedy.arg(&n_i32);
+        launch_greedy.arg(&n_attempts_i32);
+        launch_greedy.arg(&max_colors_i32);
+        launch_greedy.arg(&seed);
+        unsafe { launch_greedy.launch(cfg)?; }
 
         // Download results
         let chromatic_numbers = stream.memcpy_dtov(&chromatic_gpu)?;
@@ -183,17 +184,24 @@ impl GpuColoringSearch {
             shared_mem_bytes: 0,
         };
 
-        let mut launch = stream.launch_builder(&self.sa_kernel);
-        launch.arg(&adjacency_gpu);
-        launch.arg(&mut colorings_gpu);
-        launch.arg(&mut chromatic_gpu);
-        launch.arg(&(n as i32));
-        launch.arg(&(n_chains as i32));
-        launch.arg(&(target_colors as i32));
-        launch.arg(&(iterations_per_chain as i32));
-        launch.arg(&initial_temperature);
-        launch.arg(&42u64);  // seed
-        unsafe { launch.launch(cfg)?; }
+        let target_colors = 100;  // Fixed target for SA
+        let n_i32 = n as i32;
+        let n_chains_i32 = n_chains as i32;
+        let target_colors_i32 = target_colors as i32;
+        let iterations_i32 = iterations_per_chain as i32;
+        let seed = 42u64;
+
+        let mut launch_sa = stream.launch_builder(&self.sa_kernel);
+        launch_sa.arg(&adjacency_gpu);
+        launch_sa.arg(&mut colorings_gpu);
+        launch_sa.arg(&mut chromatic_gpu);
+        launch_sa.arg(&n_i32);
+        launch_sa.arg(&n_chains_i32);
+        launch_sa.arg(&target_colors_i32);
+        launch_sa.arg(&iterations_i32);
+        launch_sa.arg(&initial_temperature);
+        launch_sa.arg(&seed);
+        unsafe { launch_sa.launch(cfg)?; }
 
         // Download results
         let final_colorings = stream.memcpy_dtov(&colorings_gpu)?;
