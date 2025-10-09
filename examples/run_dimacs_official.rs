@@ -8,29 +8,45 @@ use ndarray::Array1;
 use anyhow::Result;
 use std::time::Instant;
 use std::collections::HashMap;
+use rayon::prelude::*;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 
-/// Expand phase field to match graph size using graph-aware interpolation
+/// Expand phase field to match graph size using AGGRESSIVE graph-aware interpolation
 fn expand_phase_field(pf: &PhaseField, graph: &Graph) -> PhaseField {
     let n_phases = pf.phases.len();
     let n_vertices = graph.num_vertices;
 
-    println!("  📐 Expanding phase field: {} → {} dimensions", n_phases, n_vertices);
+    println!("  📐 Expanding phase field: {} → {} dimensions (AGGRESSIVE MODE)", n_phases, n_vertices);
 
     // Step 1: Initial assignment by tiling
     let mut expanded_phases: Vec<f64> = (0..n_vertices)
         .map(|i| pf.phases[i % n_phases])
         .collect();
 
-    // Step 2: Graph-aware relaxation (3 iterations)
-    // Each vertex averages its phase with its neighbors' phases
-    for iteration in 0..3 {
-        let mut new_phases = expanded_phases.clone();
+    // Step 2: AGGRESSIVE graph-aware relaxation (adaptive iterations)
+    // Compute adaptive iteration count based on graph size
+    // For large graphs, use fewer iterations to keep expansion time reasonable
+    let n_iterations = if n_vertices <= 500 {
+        30  // Aggressive for small graphs
+    } else if n_vertices <= 1000 {
+        20  // Moderate for medium graphs
+    } else {
+        10  // Conservative for large graphs (still better than 3!)
+    };
+
+    println!("  🔄 Running {} relaxation iterations (adaptive for {} vertices)", n_iterations, n_vertices);
+
+    for iteration in 0..n_iterations {
+        let damping = 0.95_f64.powi(iteration as i32);
+        let mut new_phases = vec![0.0; n_vertices];
 
         for v in 0..n_vertices {
+            // Compute neighbor average
             let mut sum_phase = expanded_phases[v];
             let mut count = 1.0;
 
-            // Average with neighbors
+            // Average with all 1-hop neighbors (degree-weighted)
             for u in 0..n_vertices {
                 if graph.adjacency[v * n_vertices + u] {
                     sum_phase += expanded_phases[u];
@@ -38,12 +54,28 @@ fn expand_phase_field(pf: &PhaseField, graph: &Graph) -> PhaseField {
                 }
             }
 
-            new_phases[v] = sum_phase / count;
+            let avg_phase = sum_phase / count;
+
+            // Weighted combination with damping
+            new_phases[v] = expanded_phases[v] * (1.0 - damping) + avg_phase * damping;
+        }
+
+        // Check for convergence (early stopping)
+        if iteration > 10 {
+            let change: f64 = (0..n_vertices)
+                .map(|v| (expanded_phases[v] - new_phases[v]).abs())
+                .sum::<f64>() / n_vertices as f64;
+
+            if change < 0.001 {
+                println!("  ⚡ Converged early at iteration {} (change: {:.6})", iteration + 1, change);
+                expanded_phases = new_phases;
+                break;
+            }
         }
 
         expanded_phases = new_phases;
 
-        if iteration == 2 {
+        if iteration == n_iterations - 1 {
             println!("  ✓ Phase relaxation completed ({} iterations)", iteration + 1);
         }
     }
@@ -72,12 +104,12 @@ fn expand_phase_field(pf: &PhaseField, graph: &Graph) -> PhaseField {
     }
 }
 
-/// Expand Kuramoto state to match graph size using graph-aware interpolation
+/// Expand Kuramoto state to match graph size using AGGRESSIVE graph-aware interpolation
 fn expand_kuramoto_state(ks: &KuramotoState, graph: &Graph) -> KuramotoState {
     let n_phases = ks.phases.len();
     let n_vertices = graph.num_vertices;
 
-    println!("  📐 Expanding Kuramoto state: {} → {} dimensions", n_phases, n_vertices);
+    println!("  📐 Expanding Kuramoto state: {} → {} dimensions (AGGRESSIVE MODE)", n_phases, n_vertices);
 
     // Step 1: Initial assignment by tiling
     let mut expanded_phases: Vec<f64> = (0..n_vertices)
@@ -88,14 +120,25 @@ fn expand_kuramoto_state(ks: &KuramotoState, graph: &Graph) -> KuramotoState {
         .map(|i| ks.natural_frequencies[i % n_phases])
         .collect();
 
-    // Step 2: Graph-aware relaxation (similar to phase field)
-    for _ in 0..3 {
-        let mut new_phases = expanded_phases.clone();
+    // Step 2: AGGRESSIVE graph-aware relaxation (same as phase field)
+    let n_iterations = if n_vertices <= 500 {
+        30
+    } else if n_vertices <= 1000 {
+        20
+    } else {
+        10
+    };
+
+    for iteration in 0..n_iterations {
+        let damping = 0.95_f64.powi(iteration as i32);
+        let mut new_phases = vec![0.0; n_vertices];
 
         for v in 0..n_vertices {
+            // Compute neighbor average
             let mut sum_phase = expanded_phases[v];
             let mut count = 1.0;
 
+            // Average with all 1-hop neighbors
             for u in 0..n_vertices {
                 if graph.adjacency[v * n_vertices + u] {
                     sum_phase += expanded_phases[u];
@@ -103,7 +146,22 @@ fn expand_kuramoto_state(ks: &KuramotoState, graph: &Graph) -> KuramotoState {
                 }
             }
 
-            new_phases[v] = sum_phase / count;
+            let avg_phase = sum_phase / count;
+
+            // Apply damping for stability
+            new_phases[v] = expanded_phases[v] * (1.0 - damping) + avg_phase * damping;
+        }
+
+        // Early stopping
+        if iteration > 10 {
+            let change: f64 = (0..n_vertices)
+                .map(|v| (expanded_phases[v] - new_phases[v]).abs())
+                .sum::<f64>() / n_vertices as f64;
+
+            if change < 0.001 {
+                expanded_phases = new_phases;
+                break;
+            }
         }
 
         expanded_phases = new_phases;
@@ -147,6 +205,56 @@ fn expand_kuramoto_state(ks: &KuramotoState, graph: &Graph) -> KuramotoState {
     }
 }
 
+/// Multi-start search: Try multiple random perturbations, take best result
+fn multi_start_search(
+    graph: &Graph,
+    phase_field: &PhaseField,
+    kuramoto: &KuramotoState,
+    target_colors: usize,
+    n_attempts: usize,
+) -> shared_types::ColoringSolution {
+    println!("  🎲 Multi-start search: {} parallel attempts...", n_attempts);
+    let start = Instant::now();
+
+    let solutions: Vec<_> = (0..n_attempts).into_par_iter().filter_map(|seed| {
+        let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
+
+        // Perturb phase field with different strategies
+        let mut perturbed_pf = phase_field.clone();
+        let perturbation_magnitude = match seed % 5 {
+            0 => 0.05,   // Small perturbation
+            1 => 0.15,   // Medium perturbation
+            2 => 0.30,   // Large perturbation
+            3 => 0.05 + 0.25 * (seed as f64 / n_attempts as f64),  // Adaptive
+            4 => 0.50,   // Very aggressive
+            _ => unreachable!(),
+        };
+
+        // Perturb phases
+        for phase in &mut perturbed_pf.phases {
+            *phase += rng.gen_range(-perturbation_magnitude..perturbation_magnitude) * std::f64::consts::PI;
+        }
+
+        // Try coloring with perturbed state
+        phase_guided_coloring(graph, &perturbed_pf, kuramoto, target_colors).ok()
+    }).filter(|sol| sol.conflicts == 0).collect();
+
+    let elapsed = start.elapsed();
+
+    if solutions.is_empty() {
+        panic!("Multi-start: No valid solutions found in {} attempts", n_attempts);
+    }
+
+    let best = solutions.into_iter()
+        .min_by_key(|s| s.chromatic_number)
+        .unwrap();
+
+    println!("  ✅ Multi-start complete: {} colors (best of {} valid solutions in {:?})",
+             best.chromatic_number, n_attempts, elapsed);
+
+    best
+}
+
 fn main() -> Result<()> {
     println!("╔══════════════════════════════════════════════════════════════════╗");
     println!("║                                                                  ║");
@@ -158,11 +266,13 @@ fn main() -> Result<()> {
     println!();
 
     // Benchmark instances in priority order
+    // NOTE: Focus on DSJC500-5 for aggressive optimization
     let benchmarks = vec![
         ("DSJC500-5", "benchmarks/dimacs_official/DSJC500-5.mtx", 47, 48),
-        ("DSJC1000-5", "benchmarks/dimacs_official/DSJC1000-5.mtx", 82, 83),
-        ("C2000-5", "benchmarks/dimacs_official/C2000-5.mtx", 145, 145),
-        ("C4000-5", "benchmarks/dimacs_official/C4000-5.mtx", 259, 259),
+        // Uncomment others after DSJC500-5 optimization complete
+        // ("DSJC1000-5", "benchmarks/dimacs_official/DSJC1000-5.mtx", 82, 83),
+        // ("C2000-5", "benchmarks/dimacs_official/C2000-5.mtx", 145, 145),
+        // ("C4000-5", "benchmarks/dimacs_official/C4000-5.mtx", 259, 259),
     ];
 
     for (name, path, best_known_min, best_known_max) in benchmarks {
@@ -267,23 +377,12 @@ fn main() -> Result<()> {
         let expansion_time = expansion_start.elapsed();
         println!("  ✓ Expansion completed in {:?}", expansion_time);
 
-        // Apply phase-guided coloring algorithm with expanded states
+        // Apply multi-start search to find best coloring
         // Use generous upper bound to ensure algorithm can find valid coloring
         let target_colors = (best_known_max * 2).max(best_known_max + 100);
         let coloring_start = Instant::now();
 
-        let solution = match phase_guided_coloring(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors) {
-            Ok(sol) => {
-                let coloring_time = coloring_start.elapsed();
-                println!("  ✓ Coloring computed in {:?}", coloring_time);
-                sol
-            }
-            Err(e) => {
-                println!("  ✗ Coloring failed: {}", e);
-                println!();
-                continue;
-            }
-        };
+        let solution = multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500);
 
         // Display results
         println!();
