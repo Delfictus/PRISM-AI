@@ -1,7 +1,7 @@
 // Run PRISM-AI on Official DIMACS Benchmark Instances
 // For world-record validation
 
-use prct_core::{parse_mtx_file, phase_guided_coloring};
+use prct_core::{parse_mtx_file, phase_guided_coloring, simulated_annealing_refinement};
 use prism_ai::integration::{UnifiedPlatform, PlatformInput};
 use shared_types::{PhaseField, KuramotoState, Graph};
 use ndarray::Array1;
@@ -302,9 +302,10 @@ fn main() -> Result<()> {
             }
         };
 
-        // Initialize platform (use min of vertices or 20 for dimensionality)
-        let dims = graph.num_vertices.min(20);
-        println!("  ▶ Initializing platform (dims={})...", dims);
+        // Initialize platform with increased dimensions for richer phase state
+        // HYPOTHESIS: 20D → 100D will provide 5x more information → better coloring
+        let dims = graph.num_vertices.min(100);
+        println!("  ▶ Initializing platform (dims={}) [INCREASED FROM 20]...", dims);
 
         let mut platform = match UnifiedPlatform::new(dims) {
             Ok(p) => {
@@ -382,7 +383,29 @@ fn main() -> Result<()> {
         let target_colors = (best_known_max * 2).max(best_known_max + 100);
         let coloring_start = Instant::now();
 
-        let solution = multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500);
+        let greedy_solution = multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500);
+
+        println!("  ✓ Greedy solution: {} colors", greedy_solution.chromatic_number);
+
+        // Refine with Simulated Annealing
+        println!("  ▶ Refining with Simulated Annealing...");
+        let sa_start = Instant::now();
+
+        let solution = match simulated_annealing_refinement(&graph, &greedy_solution, 50000, 100.0) {
+            Ok(refined) => {
+                let sa_time = sa_start.elapsed();
+                println!("  ✓ SA complete in {:?}: {} → {} colors (improvement: {})",
+                         sa_time,
+                         greedy_solution.chromatic_number,
+                         refined.chromatic_number,
+                         greedy_solution.chromatic_number as i32 - refined.chromatic_number as i32);
+                refined
+            }
+            Err(e) => {
+                println!("  ⚠️  SA failed: {}, using greedy solution", e);
+                greedy_solution
+            }
+        };
 
         // Display results
         println!();

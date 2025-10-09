@@ -13,6 +13,7 @@ pub mod algorithm;
 pub mod drpp_algorithm;
 pub mod coupling;
 pub mod coloring;
+pub mod simulated_annealing;
 pub mod tsp;
 pub mod errors;
 pub mod dimacs_parser;
@@ -23,6 +24,7 @@ pub use algorithm::*;
 pub use drpp_algorithm::*;
 pub use coupling::*;
 pub use coloring::*;
+pub use simulated_annealing::*;
 pub use errors::*;
 pub use dimacs_parser::{parse_dimacs_file, parse_mtx_file, parse_graph_file};
 
