@@ -383,29 +383,35 @@ fn main() -> Result<()> {
         let target_colors = (best_known_max * 2).max(best_known_max + 100);
         let coloring_start = Instant::now();
 
-        let greedy_solution = multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500);
-
-        println!("  ✓ Greedy solution: {} colors", greedy_solution.chromatic_number);
-
-        // Refine with Simulated Annealing
-        println!("  ▶ Refining with Simulated Annealing...");
-        let sa_start = Instant::now();
-
-        let solution = match simulated_annealing_refinement(&graph, &greedy_solution, 50000, 100.0) {
-            Ok(refined) => {
-                let sa_time = sa_start.elapsed();
-                println!("  ✓ SA complete in {:?}: {} → {} colors (improvement: {})",
-                         sa_time,
-                         greedy_solution.chromatic_number,
-                         refined.chromatic_number,
-                         greedy_solution.chromatic_number as i32 - refined.chromatic_number as i32);
-                refined
-            }
-            Err(e) => {
-                println!("  ⚠️  SA failed: {}, using greedy solution", e);
-                greedy_solution
+        // Use GPU parallel search for massive exploration
+        #[cfg(feature = "cuda")]
+        let solution = {
+            println!("  🚀 Launching GPU parallel coloring search...");
+            match prct_core::gpu_coloring::GpuColoringSearch::new() {
+                Ok(gpu_search) => {
+                    match gpu_search.massive_parallel_search(
+                        &graph,
+                        &expanded_phase_field,
+                        &expanded_kuramoto,
+                        target_colors,
+                        10000  // 10,000 parallel attempts on GPU!
+                    ) {
+                        Ok(gpu_solution) => gpu_solution,
+                        Err(e) => {
+                            println!("  ⚠️  GPU search failed: {}, falling back to CPU", e);
+                            multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500)
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("  ⚠️  GPU initialization failed: {}, using CPU", e);
+                    multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500)
+                }
             }
         };
+
+        #[cfg(not(feature = "cuda"))]
+        let solution = multi_start_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 500);
 
         // Display results
         println!();

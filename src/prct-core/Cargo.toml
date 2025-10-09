@@ -5,6 +5,10 @@ edition = "2021"
 authors = ["ARES Team"]
 description = "Phase Resonance Chromatic-TSP (PRCT) Domain Logic"
 
+[features]
+default = []
+cuda = ["cudarc"]
+
 [dependencies]
 # Domain dependencies - MINIMAL, only what's essential
 shared-types = { path = "../shared-types" }
@@ -16,6 +20,9 @@ ndarray = "0.15"
 rayon = "1.10"  # Parallel CPU algorithms
 rand = "0.8"     # For simulated annealing
 rand_chacha = "0.3"  # For deterministic RNG
+
+# GPU acceleration (optional) - use workspace version
+cudarc = { version = "0.17", features = ["driver", "nvrtc"], optional = true }
 
 [dev-dependencies]
 # For testing with mocks

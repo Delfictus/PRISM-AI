@@ -22,7 +22,7 @@ members = [
 [features]
 default = ["cuda"]
 # Real CUDA GPU acceleration (requires NVIDIA drivers + RTX GPU)
-cuda = ["neuromorphic-engine/cuda", "dep:bindgen"]
+cuda = ["neuromorphic-engine/cuda", "prct-core/cuda", "dep:bindgen"]
 # MLIR support for advanced optimizations
 mlir = []
 # CPU-based simulation (DEPRECATED - only for testing without GPU)
@@ -38,7 +38,7 @@ neuromorphic-engine = { path = "src/neuromorphic", default-features = false, fea
 quantum-engine = { path = "src/quantum" }
 platform-foundation = { path = "src/foundation" }
 shared-types = { path = "src/shared-types" }
-prct-core = { path = "src/prct-core" }
+prct-core = { path = "src/prct-core", features = [] }
 prct-adapters = { path = "src/adapters" }
 mathematics = { path = "src/mathematics" }
 

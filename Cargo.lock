@@ -2349,6 +2349,7 @@ name = "prct-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cudarc 0.17.3",
  "ndarray",
  "rand 0.8.5",
  "rand_chacha 0.3.1",

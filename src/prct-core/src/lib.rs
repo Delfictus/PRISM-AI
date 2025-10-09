@@ -18,6 +18,9 @@ pub mod tsp;
 pub mod errors;
 pub mod dimacs_parser;
 
+#[cfg(feature = "cuda")]
+pub mod gpu_coloring;
+
 // Re-export main types
 pub use ports::*;
 pub use algorithm::*;
@@ -27,6 +30,9 @@ pub use coloring::*;
 pub use simulated_annealing::*;
 pub use errors::*;
 pub use dimacs_parser::{parse_dimacs_file, parse_mtx_file, parse_graph_file};
+
+#[cfg(feature = "cuda")]
+pub use gpu_coloring::*;
 
 // Re-export shared types for convenience
 pub use shared_types::*;
