@@ -83,8 +83,14 @@ fn compile_cuda_files(kernel_dir: &Path, cuda_path: &str) {
 
         println!("cargo:warning=Compiling CUDA kernel: {:?}", cu_file);
 
-        // Detect GPU architecture
-        let gpu_arch = detect_gpu_arch().unwrap_or_else(|| "sm_86".to_string());
+        // Detect GPU architecture - prioritize H100 if building for Docker
+        let gpu_arch = if let Ok(cap) = env::var("CUDA_COMPUTE_CAP") {
+            format!("sm_{}", cap)
+        } else {
+            detect_gpu_arch().unwrap_or_else(|| "sm_89".to_string())
+        };
+
+        println!("cargo:warning=Building for GPU architecture: {}", gpu_arch);
 
         // Compile to PTX for runtime loading
         let ptx_status = Command::new(format!("{}/bin/nvcc", cuda_path))

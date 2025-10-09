@@ -103,17 +103,16 @@ fn main() -> Result<()> {
     println!("✓ Cities: {}", tsp.dimension);
     println!("✓ Source: REAL TSPLIB benchmark (not synthetic)\n");
 
-    // Determine problem size based on instance
-    let problem_size = if tsp.dimension > 10000 {
-        println!("⚠️  Instance too large ({} cities)", tsp.dimension);
-        println!("   Using first 1000 cities for this run");
-        1000
-    } else if tsp.dimension > 1000 {
-        println!("⚠️  Large instance ({} cities)", tsp.dimension);
-        println!("   Using first 500 cities");
-        500
+    // Determine problem size - configurable via environment variable or full instance
+    let problem_size = if let Ok(num_cities_str) = std::env::var("NUM_CITIES") {
+        let requested = num_cities_str.parse::<usize>()
+            .unwrap_or(tsp.dimension)
+            .min(tsp.dimension);
+        println!("📊 Using {} cities (requested via NUM_CITIES env var)", requested);
+        requested
     } else {
-        println!("✓ Full instance will be processed");
+        // Default: use full instance
+        println!("✓ Processing FULL instance: {} cities", tsp.dimension);
         tsp.dimension
     };
 
