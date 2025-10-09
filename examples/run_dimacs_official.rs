@@ -279,10 +279,11 @@ fn main() -> Result<()> {
                 println!("  🚀 Attempting GPU parallel coloring search (10,000 attempts)...");
 
                 // Create GPU context for coloring
+                // NOTE: CudaContext::new() returns Arc<CudaContext> directly!
                 match cudarc::driver::CudaContext::new(0) {
-                    Ok(ctx) => {
-                        // ctx is CudaContext, wrap in Arc
-                        match prism_ai::gpu_coloring::GpuColoringSearch::new(std::sync::Arc::new(ctx)) {
+                    Ok(context) => {
+                        // context is ALREADY Arc<CudaContext>, pass directly
+                        match prism_ai::gpu_coloring::GpuColoringSearch::new(context) {
                             Ok(gpu_search) => {
                                 match gpu_search.massive_parallel_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 10000) {
                                     Ok(sol) => sol,
