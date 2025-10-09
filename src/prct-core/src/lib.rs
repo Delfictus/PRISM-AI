@@ -22,6 +22,7 @@ pub use ports::*;
 pub use algorithm::*;
 pub use drpp_algorithm::*;
 pub use coupling::*;
+pub use coloring::*;
 pub use errors::*;
 pub use dimacs_parser::{parse_dimacs_file, parse_mtx_file, parse_graph_file};
 

@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "04-Development/System Utilization Plan.md",
+                "file": "04-Development/DIMACS Graph Coloring Integration Plan.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "System Utilization Plan"
+              "title": "DIMACS Graph Coloring Integration Plan"
             }
           }
         ],
@@ -186,6 +186,12 @@
   },
   "active": "aaff34f4d9ed5b95",
   "lastOpenFiles": [
+    "08-Performance/DIMACS Graph Coloring - Instant Win Strategy.md",
+    "04-Development/FINAL SUCCESS REPORT.md",
+    "04-Development/DIMACS Graph Coloring Integration Plan.md",
+    "04-Development/Action Plan Re-evaluation.md",
+    "04-Development/System Utilization Plan.md",
+    "04-Development/DIMACS Graph Coloring Integration Plan.md.tmp.1083207.1759969271982",
     "04-Development/System Utilization Plan.md.tmp.1083207.1759952061976",
     "04-Development/System Utilization Plan.md.tmp.1083207.1759952061765",
     "04-Development/Official World Record Validation Plan.md",
@@ -196,17 +202,12 @@
     "05-Status/Current Status.md.tmp.1083207.1759949991223",
     "05-Status/Current Status.md.tmp.1083207.1759818454037",
     "04-Development/GPU Optimization Action Plan.md.tmp.1083207.1759818453879",
-    "04-Development/Action Plan Re-evaluation.md",
     "04-Development/Official World Record Validation Plan.md.tmp.1034076.1759813453193",
     "04-Development/HONEST CLAIMS ASSESSMENT.md",
-    "04-Development/HONEST CLAIMS ASSESSMENT.md.tmp.1034076.1759813338419",
     "00-Index/PRISM-AI Project Canvas.canvas",
-    "04-Development/System Utilization Plan.md",
     "04-Development/Phase 1 Benchmarking Status.md",
-    "04-Development/Phase 1 Benchmarking Status.md.tmp.1034076.1759802787044",
     "04-Development/GPU Optimization Action Plan.md",
     "04-Development/GPU Policy Evaluation COMPLETE.md",
-    "04-Development/FINAL SUCCESS REPORT.md",
     "04-Development/Neuromorphic Optimization COMPLETE.md",
     "04-Development/Session 2025-10-06 Summary.md",
     "05-Status/GPU Policy Evaluation Progress.md",
@@ -217,7 +218,6 @@
     "04-Development/TSP Interactive Demo Plan.md",
     "08-Performance/Could PRISM-AI Beat AlphaFold - Optimization Path.md",
     "08-Performance/Protein Folding vs AlphaFold - Honest Assessment.md",
-    "08-Performance/DIMACS Graph Coloring - Instant Win Strategy.md",
     "08-Performance/Instant Validation Benchmark Strategy.md",
     "08-Performance/Competitive Analysis - TSP Solvers.md",
     "08-Performance/A3 H100 TSP Benchmark Estimates.md",
