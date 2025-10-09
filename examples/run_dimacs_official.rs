@@ -386,8 +386,12 @@ fn main() -> Result<()> {
         // Use GPU parallel search for massive exploration
         #[cfg(feature = "cuda")]
         let solution = {
+            use cudarc::driver::CudaContext;
+
             println!("  🚀 Launching GPU parallel coloring search...");
-            match prism_ai::gpu_coloring::GpuColoringSearch::new() {
+            let gpu_ctx = CudaContext::new(0).unwrap();
+            let gpu_context = std::sync::Arc::new(gpu_ctx);
+            match prism_ai::gpu_coloring::GpuColoringSearch::new(gpu_context) {
                 Ok(gpu_search) => {
                     match gpu_search.massive_parallel_search(
                         &graph,

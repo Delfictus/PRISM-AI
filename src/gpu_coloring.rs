@@ -6,7 +6,7 @@
 use shared_types::*;
 use std::sync::Arc;
 use anyhow::{Result, anyhow};
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig, PushKernelArg};
 
 /// GPU-accelerated parallel coloring search
 pub struct GpuColoringSearch {
@@ -16,11 +16,8 @@ pub struct GpuColoringSearch {
 }
 
 impl GpuColoringSearch {
-    /// Create new GPU coloring search engine
-    pub fn new() -> Result<Self> {
-        let context = Arc::new(CudaContext::new(0)
-            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?);
-
+    /// Create new GPU coloring search engine with shared context
+    pub fn new(context: Arc<CudaContext>) -> Result<Self> {
         // Load PTX module
         let ptx_path = "target/ptx/parallel_coloring.ptx";
         if !std::path::Path::new(ptx_path).exists() {
