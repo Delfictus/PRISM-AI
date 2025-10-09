@@ -272,16 +272,48 @@ fn main() -> Result<()> {
         let target_colors = (best_known_max * 2).max(best_known_max + 100);
         let coloring_start = Instant::now();
 
-        let solution = match phase_guided_coloring(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors) {
-            Ok(sol) => {
-                let coloring_time = coloring_start.elapsed();
-                println!("  ✓ Coloring computed in {:?}", coloring_time);
-                sol
+        // Try GPU parallel search if available, otherwise use CPU
+        let solution = {
+            #[cfg(feature = "cuda")]
+            {
+                println!("  🚀 Attempting GPU parallel coloring search (10,000 attempts)...");
+
+                // Create GPU context for coloring
+                match cudarc::driver::CudaContext::new(0) {
+                    Ok(ctx) => {
+                        // ctx is CudaContext, wrap in Arc
+                        match prism_ai::gpu_coloring::GpuColoringSearch::new(std::sync::Arc::new(ctx)) {
+                            Ok(gpu_search) => {
+                                match gpu_search.massive_parallel_search(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors, 10000) {
+                                    Ok(sol) => sol,
+                                    Err(e) => {
+                                        println!("  ⚠️  GPU search failed: {}, using single CPU attempt", e);
+                                        phase_guided_coloring(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors).unwrap()
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("  ⚠️  GPU initialization failed: {}, using single CPU attempt", e);
+                                phase_guided_coloring(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors).unwrap()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("  ⚠️  CUDA context failed: {:?}, using single CPU attempt", e);
+                        phase_guided_coloring(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors).unwrap()
+                    }
+                }
             }
-            Err(e) => {
-                println!("  ✗ Coloring failed: {}", e);
-                println!();
-                continue;
+
+            #[cfg(not(feature = "cuda"))]
+            {
+                match phase_guided_coloring(&graph, &expanded_phase_field, &expanded_kuramoto, target_colors) {
+                    Ok(sol) => sol,
+                    Err(e) => {
+                        println!("  ✗ Coloring failed: {}", e);
+                        continue;
+                    }
+                }
             }
         };
 
