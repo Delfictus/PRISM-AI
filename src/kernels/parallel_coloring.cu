@@ -37,8 +37,9 @@ __global__ void parallel_greedy_coloring_kernel(
         my_coloring[i] = -1;  // -1 = uncolored
     }
 
-    // Perturbation magnitude varies per attempt
-    double perturbation = 0.05 + 0.45 * (double)(attempt_id % 5) / 4.0;
+    // Tiny deterministic variation per attempt (not random!)
+    // This explores solution space without destroying phase coherence signal
+    double variation_scale = (double)(attempt_id % 100) / 100000.0;  // 0.00000 to 0.00099
 
     // Color vertices in Kuramoto phase order
     for (int idx = 0; idx < n_vertices; idx++) {
@@ -57,14 +58,14 @@ __global__ void parallel_greedy_coloring_kernel(
             }
         }
 
-        // Find best color using phase coherence + randomness
+        // Find best color using PURE phase coherence (like CPU algorithm)
         double best_score = -1e9;
         int best_color = 0;
 
         for (int c = 0; c < max_colors; c++) {
             if (forbidden[c]) continue;
 
-            // Compute phase coherence score for this color
+            // Compute phase coherence score for this color (EXACT same as CPU)
             double score = 0.0;
             int count = 0;
 
@@ -82,8 +83,9 @@ __global__ void parallel_greedy_coloring_kernel(
                 score = 1.0;  // New color - neutral score
             }
 
-            // Add random perturbation for exploration
-            score += curand_normal_double(&rng_state) * perturbation;
+            // Add TINY deterministic tie-breaker (preserves phase signal!)
+            // Different attempts explore slightly different tie-breaking
+            score += variation_scale * (double)c;  // Deterministic, tiny (0.00001 scale)
 
             if (score > best_score) {
                 best_score = score;
