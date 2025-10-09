@@ -1,7 +1,7 @@
 # Multi-GPU Runtime Dockerfile for 8× H200 SXM
 # Single process using all 8 GPUs simultaneously
 
-FROM nvidia/cuda:12.3.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.2-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CUDA_HOME=/usr/local/cuda

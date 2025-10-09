@@ -1,12 +1,41 @@
-# World Record Docker Image - DSJC1000-5 on 8× H200
-# 800,000 attempts to beat 82-83 colors
+# World Record - Build in Container for GLIBC compatibility
+FROM nvidia/cuda:12.6.2-devel-ubuntu22.04 AS builder
 
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_COMPUTE_CAP=90
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    pkg-config \
+    libssl-dev \
+    libopenblas-dev \
+    gfortran \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /prism-ai
+
+# Copy source
+COPY . .
+
+# Build the world record binary IN the container
+RUN cargo build --release --features cuda --example world_record_8gpu
+
+# Runtime stage
 FROM nvidia/cuda:12.6.2-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:${PATH}
-ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:/usr/lib/wsl/lib:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 
 RUN apt-get update && apt-get install -y \
     libgomp1 \
@@ -16,19 +45,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /prism-ai
 
-# Copy world record binary
-COPY target/release/examples/world_record_8gpu /usr/local/bin/world_record
-RUN chmod +x /usr/local/bin/world_record
-
-# Copy DSJC1000-5 benchmark
+# Copy from builder
+COPY --from=builder /prism-ai/target/release/examples/world_record_8gpu /usr/local/bin/world_record
+COPY --from=builder /prism-ai/target/ptx/*.ptx /prism-ai/target/ptx/
 COPY benchmarks/dimacs_official/DSJC1000-5.mtx /prism-ai/benchmarks/dimacs_official/DSJC1000-5.mtx
 
-# Copy PTX kernels
-COPY target/ptx/*.ptx /prism-ai/target/ptx/
+RUN chmod +x /usr/local/bin/world_record && mkdir -p /output
 
-RUN mkdir -p /output
-
-# Entrypoint
 RUN cat > /entrypoint.sh << 'EOF'
 #!/bin/bash
 set -e
@@ -60,13 +83,5 @@ ENV RUST_LOG=info
 ENV NUM_GPUS=8
 ENV ATTEMPTS_PER_GPU=100000
 
-LABEL org.opencontainers.image.title="PRISM-AI World Record Attempt"
-LABEL org.opencontainers.image.description="DSJC1000-5 graph coloring world record attempt on 8× H200"
-LABEL org.opencontainers.image.version="1.0.0"
-LABEL ai.prism.benchmark="DSJC1000-5"
-LABEL ai.prism.target="world-record"
-LABEL ai.prism.gpu.count="8"
-
 VOLUME ["/output"]
-
 ENTRYPOINT ["/entrypoint.sh"]
