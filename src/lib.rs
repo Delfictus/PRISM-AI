@@ -31,6 +31,10 @@ pub mod mlir_runtime;
 // Quantum MLIR Dialect - First-class GPU acceleration with native complex support!
 pub mod quantum_mlir;
 
+// GPU-accelerated graph coloring
+#[cfg(feature = "cuda")]
+pub mod gpu_coloring;
+
 // Re-export key components
 pub use mathematics::{
     MathematicalStatement, ProofResult, Assumption,

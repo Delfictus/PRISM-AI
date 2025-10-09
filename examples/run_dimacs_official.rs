@@ -387,7 +387,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "cuda")]
         let solution = {
             println!("  🚀 Launching GPU parallel coloring search...");
-            match prct_core::gpu_coloring::GpuColoringSearch::new() {
+            match prism_ai::gpu_coloring::GpuColoringSearch::new() {
                 Ok(gpu_search) => {
                     match gpu_search.massive_parallel_search(
                         &graph,

@@ -7,7 +7,7 @@ description = "Phase Resonance Chromatic-TSP (PRCT) Domain Logic"
 
 [features]
 default = []
-cuda = ["cudarc"]
+cuda = []
 
 [dependencies]
 # Domain dependencies - MINIMAL, only what's essential
@@ -21,8 +21,8 @@ rayon = "1.10"  # Parallel CPU algorithms
 rand = "0.8"     # For simulated annealing
 rand_chacha = "0.3"  # For deterministic RNG
 
-# GPU acceleration (optional) - use workspace version
-cudarc = { version = "0.17", features = ["driver", "nvrtc"], optional = true }
+# GPU acceleration (optional) - relies on parent workspace cudarc
+# cudarc is provided by parent crate, not declared here
 
 [dev-dependencies]
 # For testing with mocks

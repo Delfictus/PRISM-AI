@@ -3,11 +3,10 @@
 //! Runs thousands of coloring attempts in parallel on GPU
 //! to massively explore the solution space.
 
-use crate::errors::*;
 use shared_types::*;
 use std::sync::Arc;
 use anyhow::{Result, anyhow};
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig, DeviceRepr, ValidAsZeroBits, PushKernelArg};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, LaunchConfig};
 
 /// GPU-accelerated parallel coloring search
 pub struct GpuColoringSearch {
@@ -19,9 +18,8 @@ pub struct GpuColoringSearch {
 impl GpuColoringSearch {
     /// Create new GPU coloring search engine
     pub fn new() -> Result<Self> {
-        let context = CudaContext::new(0)
-            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?;
-        let context = Arc::new(context);
+        let context = Arc::new(CudaContext::new(0)
+            .map_err(|e| anyhow!("Failed to create CUDA context: {}", e))?);
 
         // Load PTX module
         let ptx_path = "target/ptx/parallel_coloring.ptx";
