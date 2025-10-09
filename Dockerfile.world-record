@@ -1,0 +1,72 @@
+# World Record Docker Image - DSJC1000-5 on 8× H200
+# 800,000 attempts to beat 82-83 colors
+
+FROM nvidia/cuda:12.3.1-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:/usr/lib/wsl/lib:${LD_LIBRARY_PATH}
+
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    libopenblas0 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /prism-ai
+
+# Copy world record binary
+COPY target/release/examples/world_record_8gpu /usr/local/bin/world_record
+RUN chmod +x /usr/local/bin/world_record
+
+# Copy DSJC1000-5 benchmark
+COPY benchmarks/dimacs_official/DSJC1000-5.mtx /prism-ai/benchmarks/dimacs_official/DSJC1000-5.mtx
+
+# Copy PTX kernels
+COPY target/ptx/*.ptx /prism-ai/target/ptx/
+
+RUN mkdir -p /output
+
+# Entrypoint
+RUN cat > /entrypoint.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  🏆 DSJC1000-5 WORLD RECORD ATTEMPT                         ║"
+echo "║  8× H200 SXM - 800,000 Attempts                             ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+NUM_GPUS="${NUM_GPUS:-8}"
+ATTEMPTS_PER_GPU="${ATTEMPTS_PER_GPU:-100000}"
+
+echo "Configuration:"
+echo "  GPUs:             $NUM_GPUS"
+echo "  Attempts/GPU:     $ATTEMPTS_PER_GPU"
+echo "  Total:            $((NUM_GPUS * ATTEMPTS_PER_GPU))"
+echo "  Target:           < 82 colors (world record)"
+echo ""
+
+cd /prism-ai
+exec /usr/local/bin/world_record 2>&1 | tee /output/world_record_attempt.log
+EOF
+
+RUN chmod +x /entrypoint.sh
+
+ENV RUST_BACKTRACE=1
+ENV RUST_LOG=info
+ENV NUM_GPUS=8
+ENV ATTEMPTS_PER_GPU=100000
+
+LABEL org.opencontainers.image.title="PRISM-AI World Record Attempt"
+LABEL org.opencontainers.image.description="DSJC1000-5 graph coloring world record attempt on 8× H200"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL ai.prism.benchmark="DSJC1000-5"
+LABEL ai.prism.target="world-record"
+LABEL ai.prism.gpu.count="8"
+
+VOLUME ["/output"]
+
+ENTRYPOINT ["/entrypoint.sh"]
