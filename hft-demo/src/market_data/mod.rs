@@ -19,7 +19,7 @@
 
 pub mod loader;
 pub mod simulator;    // Task 1.2 ✅
-// pub mod features;     // Task 1.3
+pub mod features;     // Task 1.3 ✅
 // pub mod validation;   // Task 1.4
 
 // Re-exports
@@ -33,4 +33,9 @@ pub use loader::{
 pub use simulator::{
     MarketSimulator,
     SimulationMode,
+};
+
+pub use features::{
+    FeatureExtractor,
+    MarketFeatures,
 };
