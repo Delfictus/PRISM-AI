@@ -24,6 +24,7 @@ pub mod loader;
 
 // Re-exports
 pub use loader::{
+    AlpacaDataLoader,
     CsvDataLoader,
     MarketTick,
     OrderBookSnapshot,
