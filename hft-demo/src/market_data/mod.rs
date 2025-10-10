@@ -18,7 +18,7 @@
 //! - Anti-drift tests validate behavior varies with input
 
 pub mod loader;
-// pub mod simulator;    // Task 1.2
+pub mod simulator;    // Task 1.2 ✅
 // pub mod features;     // Task 1.3
 // pub mod validation;   // Task 1.4
 
@@ -28,4 +28,9 @@ pub use loader::{
     CsvDataLoader,
     MarketTick,
     OrderBookSnapshot,
+};
+
+pub use simulator::{
+    MarketSimulator,
+    SimulationMode,
 };

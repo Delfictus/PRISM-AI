@@ -49,9 +49,9 @@
 //! );
 //! let ticks = loader.load_all()?;
 //!
-//! // Create simulator
+//! // Create simulator from loaded data
 //! let mut simulator = MarketSimulator::new_historical(
-//!     "data/sample_aapl_1hour.csv".to_string(),
+//!     ticks,                // Pass the loaded ticks
 //!     "AAPL".to_string(),
 //!     1000.0  // 1000x speed
 //! )?;
