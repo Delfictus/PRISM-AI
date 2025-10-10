@@ -17,6 +17,7 @@ members = [
     "src/adapters",
     "src/mathematics",
     "validation",
+    "hft-demo",
 ]
 
 [features]

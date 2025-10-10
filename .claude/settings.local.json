@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(dpkg:*)",
+      "Bash(cargo clean:*)",
+      "Bash(RUSTFLAGS=\"-C link-args=-fuse-ld=gold\" cargo check -p hft-demo --lib)",
+      "Bash(cargo test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,34 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# Data files
+/data/*.csv
+/data/*.parquet
+/data/cache/
+
+# Keep sample data
+!/data/sample_*.csv
+
+# Results
+/results/
+*.json
+*.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+/tmp/
