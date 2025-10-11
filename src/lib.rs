@@ -19,6 +19,8 @@ pub mod integration;
 pub mod resilience;
 pub mod optimization;
 pub mod cma; // Phase 6: Causal Manifold Annealing
+pub mod metrics; // Prometheus metrics exporter
+pub mod web_platform; // Web Platform backend (WebSocket + API)
 
 // GPU acceleration modules (OBSOLETE - quantum_mlir replaces this)
 // #[cfg(feature = "cuda")]
@@ -71,6 +73,8 @@ pub use optimization::{
     PerformanceTuner, TuningProfile, SearchAlgorithm, SearchSpace, PerformanceMetrics,
     KernelTuner, GpuProperties, KernelConfig, OccupancyInfo,
 };
+
+pub use metrics::{MetricsExporter, start_metrics_exporter};
 
 /// Platform version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
